@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using Windows.Media.Control;
+using Windows.Storage.Streams;
 
 namespace Lyrical;
 
@@ -71,6 +72,7 @@ public sealed class MediaSessionService : IDisposable
             if (info.Key != _lastKey)
             {
                 _lastKey = info.Key;
+                info = info with { ArtworkDataUrl = await ReadArtworkDataUrlAsync(props.Thumbnail) };
                 TrackChanged?.Invoke(string.IsNullOrWhiteSpace(info.Title) ? null : info);
             }
             EmitClock(session);
@@ -78,6 +80,31 @@ public sealed class MediaSessionService : IDisposable
         catch (Exception ex)
         {
             Debug.WriteLine($"Media refresh failed: {ex.Message}");
+        }
+    }
+
+    // Keep artwork local and bounded. WebView2 receives an in-memory data URL,
+    // avoiding a separate image host, cache, or provider dependency.
+    private static async Task<string?> ReadArtworkDataUrlAsync(IRandomAccessStreamReference? thumbnail)
+    {
+        const ulong maxArtworkBytes = 2 * 1024 * 1024;
+        if (thumbnail == null) return null;
+
+        try
+        {
+            using var stream = await thumbnail.OpenReadAsync();
+            if (stream.Size == 0 || stream.Size > maxArtworkBytes) return null;
+
+            using var reader = new DataReader(stream);
+            await reader.LoadAsync((uint)stream.Size);
+            var bytes = new byte[(int)stream.Size];
+            reader.ReadBytes(bytes);
+            return $"data:image/*;base64,{Convert.ToBase64String(bytes)}";
+        }
+        catch (Exception ex)
+        {
+            Debug.WriteLine($"Album art read failed: {ex.Message}");
+            return null;
         }
     }
 

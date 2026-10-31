@@ -103,3 +103,7 @@ The renderer includes a **Lyrics** visibility setting:
 The **Size** setting scales the UI from 100% to 200%, with 125% selected by default for readability on high-resolution displays such as 2560×1440. Preferences are saved locally in the WebView.
 
 These settings apply to the constellation renderer; non-constellation layouts retain their existing layout behavior.
+
+## Album-art colour schemes
+
+The display settings include curated Midnight Gold, Aurora, Nebula, and Ember schemes, plus editable background, active-word, other-word, and constellation-path colours. **Match album art** reads the thumbnail supplied by the active Windows media session, extracts a local palette in the renderer, and darkens its background to preserve lyric contrast. No artwork is uploaded or fetched from a third party. If a player does not provide a thumbnail, Lyrical keeps the Midnight Gold fallback.

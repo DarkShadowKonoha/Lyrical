@@ -3,7 +3,7 @@ using System.Text;
 
 namespace Lyrical;
 
-public sealed record TrackInfo(string Title, string Artist, string Album, long DurationMs)
+public sealed record TrackInfo(string Title, string Artist, string Album, long DurationMs, string? ArtworkDataUrl = null)
 {
     public string Key => $"{Title}|{Artist}|{Album}";
 }

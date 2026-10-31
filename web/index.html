@@ -10,6 +10,8 @@
     --lyric: #4d5480;      /* words not yet sung */
     --hi: #ffe2b0;         /* the word being sung */
     --secondary: #7c84b3;  /* track info, hints */
+    --edge: #69afff;       /* constellation paths and active accents */
+    --past: #c7a77f;
     --ease: cubic-bezier(.2,.7,.2,1);
     --pad: calc(clamp(24px, 7vw, 120px) * var(--ui-scale));
     --fs: calc(clamp(28px, 5.2vw, 76px) * var(--ui-scale));
@@ -27,15 +29,15 @@
   @keyframes star-drift { from { transform:translate3d(0,0,0) rotate(0deg); } to { transform:translate3d(-28px,18px,0) rotate(1deg); } }
   body[data-constellation] #constellation { display:block; }
   body[data-constellation] #lines { display:none; }
-  .constellation-edge { stroke:rgba(105,175,255,.34); stroke-width:1.15; fill:none; transition:stroke .25s, opacity .25s; }
-  .constellation-edge.past { stroke:rgba(255,195,125,.36); }
-  .constellation-edge.active { stroke:rgba(120,205,255,.95); stroke-width:2.1; filter:drop-shadow(0 0 4px rgba(80,175,255,.9)); }
-  .constellation-star { fill:#536982; opacity:.38; transition:opacity .25s, fill .25s, r .25s; }
-  .constellation-star.past { fill:#e8b77a; opacity:.65; }
-  .constellation-star.active { fill:#eaf8ff; opacity:1; filter:drop-shadow(0 0 7px #48aaff); }
-  .constellation-label { fill:#657b9c; font-size:calc(15px * var(--ui-scale)); font-weight:500; text-anchor:middle; dominant-baseline:central; transition:opacity .25s, fill .25s; pointer-events:none; }
-  .constellation-label.past { fill:#c7a77f; }
-  .constellation-label.active { fill:#eaf7ff; font-size:calc(30px * var(--ui-scale)); font-weight:750; filter:drop-shadow(0 0 10px rgba(55,160,255,.95)); }
+  .constellation-edge { stroke:color-mix(in srgb, var(--edge) 52%, transparent); stroke-width:1.15; fill:none; transition:stroke .25s, opacity .25s; }
+  .constellation-edge.past { stroke:color-mix(in srgb, var(--past) 52%, transparent); }
+  .constellation-edge.active { stroke:var(--edge); stroke-width:2.1; filter:drop-shadow(0 0 4px var(--edge)); }
+  .constellation-star { fill:var(--lyric); opacity:.38; transition:opacity .25s, fill .25s, r .25s; }
+  .constellation-star.past { fill:var(--past); opacity:.65; }
+  .constellation-star.active { fill:var(--hi); opacity:1; filter:drop-shadow(0 0 7px var(--edge)); }
+  .constellation-label { fill:var(--lyric); font-size:calc(15px * var(--ui-scale)); font-weight:500; text-anchor:middle; dominant-baseline:central; transition:opacity .25s, fill .25s; pointer-events:none; }
+  .constellation-label.past { fill:var(--past); }
+  .constellation-label.active { fill:var(--hi); font-size:calc(30px * var(--ui-scale)); font-weight:750; filter:drop-shadow(0 0 10px var(--edge)); }
   .constellation-label.past { opacity:.36; }
   .constellation-star.active { r:7; }
   body[data-style^="constellation-"] .constellation-edge { transition:stroke .35s,opacity .55s; }
@@ -133,6 +135,10 @@
   #picker select { font:inherit; font-size:13px; color:#e6efff; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13); border-radius:8px; padding:9px 10px; cursor:pointer; }
   #picker select option { color:#111; }
   #picker select:focus-visible, #settings-trigger:focus-visible { outline:2px solid #91caff; outline-offset:3px; }
+  #picker .colour-grid { display:grid; grid-template-columns:repeat(2, minmax(0,1fr)); gap:7px; }
+  #picker .colour-grid label { display:flex; align-items:center; gap:7px; color:rgba(225,236,255,.8); font-size:12px; }
+  #picker input[type="color"] { width:27px; height:27px; padding:1px; border:1px solid rgba(255,255,255,.2); border-radius:7px; background:transparent; cursor:pointer; }
+  #picker .art-note { margin:0; color:rgba(210,224,255,.6); font-size:11px; line-height:1.35; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
   @media (prefers-reduced-motion: reduce) {
@@ -167,6 +173,24 @@
     <option value="1">100%</option><option value="1.15">115%</option><option value="1.25" selected>125%</option>
     <option value="1.4">140%</option><option value="1.5">150%</option><option value="1.75">175%</option><option value="2">200%</option>
   </select></label>
+  <label class="setting"><span class="setting-label">Colour scheme</span><select id="colour-scheme" aria-label="Colour scheme">
+    <option value="midnight">Midnight Gold</option>
+    <option value="aurora">Aurora</option>
+    <option value="nebula">Nebula</option>
+    <option value="ember">Ember</option>
+    <option value="album">Match album art</option>
+    <option value="custom">Custom</option>
+  </select></label>
+  <div class="setting" id="colour-controls">
+    <span class="setting-label">Colour channels</span>
+    <div class="colour-grid">
+      <label>Background <input id="colour-bg" type="color" value="#0e1020" aria-label="Background colour"></label>
+      <label>Active words <input id="colour-hi" type="color" value="#ffe2b0" aria-label="Active lyric colour"></label>
+      <label>Other words <input id="colour-lyric" type="color" value="#4d5480" aria-label="Other lyric colour"></label>
+      <label>Paths / effects <input id="colour-edge" type="color" value="#69afff" aria-label="Constellation paths and effects colour"></label>
+    </div>
+    <p class="art-note" id="art-note">Match album art uses the active track’s local media thumbnail.</p>
+  </div>
 </div>
 <div id="hop" aria-hidden="true"></div>
 
@@ -238,6 +262,102 @@
     try { localStorage.setItem('Lyrical.zoom', zoomPicker.value); } catch (_) {}
     state.active = -2; buildConstellation();
   });
+
+  // ---------- colour schemes ----------
+  // Curated for dark lyric surfaces: high-luminance active text and a distinct
+  // path accent keep constellation links readable without competing with words.
+  const COLOUR_SCHEMES = {
+    midnight: { bg:'#0e1020', lyric:'#4d5480', hi:'#ffe2b0', edge:'#69afff', secondary:'#7c84b3', past:'#c7a77f' },
+    aurora:   { bg:'#071a20', lyric:'#5a8290', hi:'#d8fff2', edge:'#54e3b7', secondary:'#91bac1', past:'#8ac7b2' },
+    nebula:   { bg:'#160d2b', lyric:'#766298', hi:'#ffe1fb', edge:'#b895ff', secondary:'#a998c5', past:'#d9a7dc' },
+    ember:    { bg:'#21100d', lyric:'#8c6254', hi:'#fff0cf', edge:'#ff9c6a', secondary:'#c89986', past:'#e4b18a' }
+  };
+  const colourSchemePicker = $('colour-scheme');
+  const colourInputs = { bg:$('colour-bg'), hi:$('colour-hi'), lyric:$('colour-lyric'), edge:$('colour-edge') };
+  const artNote = $('art-note');
+  let albumArtDataUrl = null;
+
+  function setColourVariables(colours) {
+    const root = document.documentElement.style;
+    root.setProperty('--bg', colours.bg);
+    root.setProperty('--lyric', colours.lyric);
+    root.setProperty('--hi', colours.hi);
+    root.setProperty('--edge', colours.edge);
+    root.setProperty('--secondary', colours.secondary || colours.lyric);
+    root.setProperty('--past', colours.past || colours.edge);
+    Object.entries(colourInputs).forEach(([key, input]) => { if (colours[key]) input.value = colours[key]; });
+  }
+  function saveColours() {
+    try {
+      localStorage.setItem('Lyrical.colourScheme', colourSchemePicker.value);
+      localStorage.setItem('Lyrical.customColours', JSON.stringify(Object.fromEntries(Object.entries(colourInputs).map(([key, input]) => [key, input.value]))));
+    } catch (_) {}
+  }
+  function applyScheme(name, quiet) {
+    if (COLOUR_SCHEMES[name]) {
+      setColourVariables(COLOUR_SCHEMES[name]);
+      artNote.textContent = 'Curated for dark lyric surfaces and bright, readable active words.';
+    } else if (name === 'custom') {
+      setColourVariables(Object.fromEntries(Object.entries(colourInputs).map(([key, input]) => [key, input.value])));
+      artNote.textContent = 'Custom colours apply to the background, words, and constellation paths/effects.';
+    } else if (name === 'album') {
+      if (albumArtDataUrl) deriveAlbumColours(albumArtDataUrl);
+      else artNote.textContent = 'Waiting for album art. Midnight Gold remains active if this session has no thumbnail.';
+    }
+    if (!quiet) toast(name === 'album' ? 'Colours: match album art' : 'Colours: ' + colourSchemePicker.options[colourSchemePicker.selectedIndex].text);
+    saveColours();
+  }
+  function hex(rgb) { return '#' + rgb.map(x => Math.max(0, Math.min(255, Math.round(x))).toString(16).padStart(2, '0')).join(''); }
+  function mix(a, b, amount) { return a.map((v, i) => v * (1 - amount) + b[i] * amount); }
+  function luminance(rgb) {
+    const channel = value => { value /= 255; return value <= .04045 ? value / 12.92 : Math.pow((value + .055) / 1.055, 2.4); };
+    return .2126 * channel(rgb[0]) + .7152 * channel(rgb[1]) + .0722 * channel(rgb[2]);
+  }
+  function contrast(a, b) { const x = luminance(a), y = luminance(b); return (Math.max(x, y) + .05) / (Math.min(x, y) + .05); }
+  function deriveAlbumColours(dataUrl) {
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas'); canvas.width = canvas.height = 40;
+      const context = canvas.getContext('2d', { willReadFrequently: true });
+      context.drawImage(image, 0, 0, 40, 40);
+      const pixels = context.getImageData(0, 0, 40, 40).data, buckets = new Map();
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] < 180) continue;
+        const colour = [pixels[i] >> 4 << 4, pixels[i + 1] >> 4 << 4, pixels[i + 2] >> 4 << 4];
+        const key = colour.join(','); buckets.set(key, (buckets.get(key) || 0) + 1);
+      }
+      const ranked = [...buckets.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key.split(',').map(Number));
+      const dominant = ranked[0] || [32, 52, 85];
+      const accent = ranked.find(c => Math.max(...c) - Math.min(...c) > 48 && luminance(c) > .08) || dominant;
+      const background = mix(dominant, [0, 0, 0], .78);
+      const active = contrast([255, 255, 255], background) >= 4.5 ? [255, 255, 255] : [255, 244, 222];
+      const colours = { bg:hex(background), hi:hex(active), lyric:hex(mix(accent, [255,255,255], .18)), edge:hex(mix(accent, [255,255,255], .42)), secondary:hex(mix(accent, [255,255,255], .32)), past:hex(mix(accent, [255,225,188], .35)) };
+      setColourVariables(colours);
+      artNote.textContent = 'Matched to the current album art with a darkened background for lyric contrast.';
+    };
+    image.onerror = () => { artNote.textContent = 'Album art could not be read; Midnight Gold remains active.'; };
+    image.src = dataUrl;
+  }
+  function setAlbumArt(dataUrl) {
+    albumArtDataUrl = dataUrl || null;
+    if (colourSchemePicker.value !== 'album') return;
+    if (albumArtDataUrl) deriveAlbumColours(albumArtDataUrl);
+    else {
+      setColourVariables(COLOUR_SCHEMES.midnight);
+      artNote.textContent = 'This media session did not provide album art; Midnight Gold is being used.';
+    }
+  }
+  try {
+    const savedScheme = localStorage.getItem('Lyrical.colourScheme') || 'midnight';
+    const savedCustom = JSON.parse(localStorage.getItem('Lyrical.customColours') || 'null');
+    if (savedCustom) Object.entries(colourInputs).forEach(([key, input]) => { if (savedCustom[key]) input.value = savedCustom[key]; });
+    colourSchemePicker.value = [...colourSchemePicker.options].some(option => option.value === savedScheme) ? savedScheme : 'midnight';
+  } catch (_) {}
+  applyScheme(colourSchemePicker.value, true);
+  colourSchemePicker.addEventListener('change', () => applyScheme(colourSchemePicker.value));
+  Object.values(colourInputs).forEach(input => input.addEventListener('input', () => {
+    colourSchemePicker.value = 'custom'; applyScheme('custom', true); saveColours();
+  }));
 
   // ---------- text and notes ----------
   // A few media apps expose UTF-8 metadata after it has been decoded as
@@ -615,7 +735,7 @@
   function handle(m) {
     if (!m || !m.type) return;
     if (m.type === 'track') {
-      setMeta(m); showDoc(null); setNote('Looking for lyrics…');
+      setMeta(m); setAlbumArt(m.artDataUrl); showDoc(null); setNote('Looking for lyrics…');
     } else if (m.type === 'lyrics') {
       const doc = m.lrc ? removeProviderHeaders(E.parseLrc(m.lrc)) : null;
       if (doc && doc.lines.length) { showDoc(doc); }
@@ -630,6 +750,7 @@
       if (m.lyric) r.setProperty('--lyric', m.lyric);
       if (m.highlight) r.setProperty('--hi', m.highlight);
       if (m.secondary) r.setProperty('--secondary', m.secondary);
+      if (m.edge) r.setProperty('--edge', m.edge);
     }
   }
 

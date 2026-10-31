@@ -97,7 +97,7 @@ public partial class MainWindow : Window
         // details and both lyrics providers receive the same clean values.
         track = TrackNormalizer.CleanMetadata(track);
 
-        Post(new { type = "track", title = track.Title, artist = track.Artist, album = track.Album, durationMs = track.DurationMs });
+        Post(new { type = "track", title = track.Title, artist = track.Artist, album = track.Album, durationMs = track.DurationMs, artDataUrl = track.ArtworkDataUrl });
 
         _ = Task.Run(async () =>
         {
