@@ -1,0 +1,10 @@
+{
+  "name": "Lyrical-win-web",
+  "private": true,
+  "scripts": {
+    "test": "node tests/engine.test.js && node tests/icons.test.js",
+    "test:styles": "node tests/styles.smoke.js",
+    "test:py": "python -m unittest discover -s tests -p \"test_*.py\""
+  },
+  "devDependencies": { "jsdom": "^24.0.0" }
+}

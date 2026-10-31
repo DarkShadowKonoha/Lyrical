@@ -1,0 +1,676 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lyrical</title>
+<style>
+  :root {
+    --bg: #0e1020;
+    --lyric: #4d5480;      /* words not yet sung */
+    --hi: #ffe2b0;         /* the word being sung */
+    --secondary: #7c84b3;  /* track info, hints */
+    --ease: cubic-bezier(.2,.7,.2,1);
+    --pad: calc(clamp(24px, 7vw, 120px) * var(--ui-scale));
+    --fs: calc(clamp(28px, 5.2vw, 76px) * var(--ui-scale));
+    --ui-scale: 1;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); overflow: hidden; }
+  body { font-family: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif; color: var(--secondary); }
+
+  #stage { position: absolute; inset: 0; overflow: hidden; }
+  #stage { font-size: calc(16px * var(--ui-scale)); }
+  #constellation { display:none; position:absolute; inset:0; width:100%; height:100%; overflow:hidden; }
+  #constellation-world { transform-box: view-box; transform-origin: 0 0; transition: transform 900ms cubic-bezier(.18,.72,.18,1); will-change: transform; }
+  body[data-constellation] #stage:after { content:""; position:absolute; inset:-12%; pointer-events:none; opacity:.45; background-image:radial-gradient(circle at 12% 28%,rgba(155,205,255,.65) 0 1px,transparent 1.8px),radial-gradient(circle at 76% 22%,rgba(255,220,170,.45) 0 1px,transparent 1.8px),radial-gradient(circle at 64% 78%,rgba(120,175,255,.55) 0 1px,transparent 1.8px),radial-gradient(circle at 32% 82%,rgba(190,210,255,.4) 0 1px,transparent 1.8px); background-size:240px 210px,310px 270px,280px 240px,360px 300px; animation:star-drift 42s linear infinite; }
+  @keyframes star-drift { from { transform:translate3d(0,0,0) rotate(0deg); } to { transform:translate3d(-28px,18px,0) rotate(1deg); } }
+  body[data-constellation] #constellation { display:block; }
+  body[data-constellation] #lines { display:none; }
+  .constellation-edge { stroke:rgba(105,175,255,.34); stroke-width:1.15; fill:none; transition:stroke .25s, opacity .25s; }
+  .constellation-edge.past { stroke:rgba(255,195,125,.36); }
+  .constellation-edge.active { stroke:rgba(120,205,255,.95); stroke-width:2.1; filter:drop-shadow(0 0 4px rgba(80,175,255,.9)); }
+  .constellation-star { fill:#536982; opacity:.38; transition:opacity .25s, fill .25s, r .25s; }
+  .constellation-star.past { fill:#e8b77a; opacity:.65; }
+  .constellation-star.active { fill:#eaf8ff; opacity:1; filter:drop-shadow(0 0 7px #48aaff); }
+  .constellation-label { fill:#657b9c; font-size:calc(15px * var(--ui-scale)); font-weight:500; text-anchor:middle; dominant-baseline:central; transition:opacity .25s, fill .25s; pointer-events:none; }
+  .constellation-label.past { fill:#c7a77f; }
+  .constellation-label.active { fill:#eaf7ff; font-size:calc(30px * var(--ui-scale)); font-weight:750; filter:drop-shadow(0 0 10px rgba(55,160,255,.95)); }
+  .constellation-label.past { opacity:.36; }
+  .constellation-star.active { r:7; }
+  body[data-style^="constellation-"] .constellation-edge { transition:stroke .35s,opacity .55s; }
+  body[data-style^="constellation-"] .constellation-label { transition:opacity .55s,fill .35s,font-size .45s; }
+  body[data-style="constellation-nebula"] #stage:before { content:""; position:absolute; inset:-20%; background:radial-gradient(ellipse at 30% 45%,rgba(90,50,180,.18),transparent 40%),radial-gradient(ellipse at 75% 60%,rgba(20,100,190,.13),transparent 42%); pointer-events:none; }
+  body[data-style="constellation-evolving"] .constellation-label.future, body[data-style="constellation-evolving"] .constellation-star.future { opacity:.04; }
+  body[data-style="constellation-hybrid"] .constellation-label.far { opacity:.12; }
+  body[data-style="constellation-hybrid"] .constellation-star.far { opacity:.12; }
+  body[data-style="constellation-orbit"] .constellation-star.active { stroke:rgba(100,190,255,.8); stroke-width:9; stroke-opacity:.25; }
+  #lines { position: absolute; left: var(--pad); right: var(--pad); top: 0; }
+
+  /* ---- shared building blocks ---- */
+  .line { margin: 0; font-size: var(--fs); line-height: 1.14; font-weight: 700; letter-spacing: -.015em; opacity: 0; }
+  .line.gap { display: none; }
+  .wd { display: inline-block; position: relative; margin-right: .26em; transition: transform .18s var(--ease); }
+  .w { display: inline-block; --p: 0; color: transparent; -webkit-background-clip: text; background-clip: text;
+       background-image: linear-gradient(90deg, var(--hi) calc(var(--p) * 116% - 16%), var(--lyric) calc(var(--p) * 116%)); }
+  .line:not(.now) .w { background-image: none; color: var(--lyric); }
+  .line.past .w { color: var(--secondary); }
+  .ic { display: none; }
+  #hop { display: none; }
+
+  /* ---- Focus: a scrolling column; the sung line is large, neighbours shrink and fade ---- */
+  body[data-style="focus"] .line { position: relative; margin-bottom: .5em; transform-origin: left center;
+       transition: transform .55s var(--ease), opacity .55s var(--ease); }
+  body[data-style="focus"] #lines { transition: transform .55s var(--ease); will-change: transform; }
+  body[data-style="focus"] .line.now { opacity: 1; }
+  body[data-style="focus"] .line.f1, body[data-style="focus"] .line.p1 { opacity: .55; transform: scale(.62); }
+  body[data-style="focus"] .line.f2, body[data-style="focus"] .line.p2 { opacity: .22; transform: scale(.5); }
+
+  /* ---- shared for styles that stack lines on top of each other ---- */
+  body[data-abs] #lines { bottom: 0; }
+  body[data-abs] .line { position: absolute; left: 0; right: 0; top: 50%; transform-origin: left center;
+       transition: transform .6s var(--ease), opacity .45s ease, filter .45s ease; }
+
+  /* ---- Hopper and Icons: one line on screen; the old line lifts away, the next one arrives ---- */
+  body[data-single] .line { --fs: clamp(34px, 6.2vw, 96px); transform: translateY(-50%); }
+  body[data-single] .line.p1, body[data-single] .line.p2, body[data-single] .line.p3 { transform: translateY(calc(-50% - .55em)); filter: blur(.1em); }
+  body[data-single] .line.f1, body[data-single] .line.f2, body[data-single] .line.f3 { transform: translateY(calc(-50% + .55em)); filter: blur(.1em); }
+  body[data-single] .line.now { opacity: 1; transform: translateY(-50%); filter: none; }
+
+  /* Hopper: a bar jumps from word to word */
+  body[data-style="hopper"] #hop { display: block; position: absolute; height: .085em; border-radius: 99px; margin-top: .04em;
+       background: var(--hi); box-shadow: 0 0 .6em var(--hi); pointer-events: none;
+       transition: left .26s cubic-bezier(.34,1.56,.64,1), width .26s cubic-bezier(.34,1.56,.64,1), top .26s var(--ease); }
+  body[data-style="hopper"] #hop.jump { animation: hopjump .26s ease-out; }
+  @keyframes hopjump { 0% { margin-top: .04em; } 45% { margin-top: -.3em; } 100% { margin-top: .04em; } }
+
+  /* Icons: a matched emoji pops in above each word as it starts */
+  body[data-style="icons"] .line { padding-top: .9em; }
+  body[data-style="icons"] .ic { display: block; position: absolute; left: 50%; top: -.95em; font-size: .62em; line-height: 1;
+       transform: translateX(-50%) scale(0); opacity: 0; pointer-events: none;
+       font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+       transition: transform .32s cubic-bezier(.3,1.7,.5,1), opacity .2s; }
+  body[data-style="icons"] .wd.sung .ic { transform: translateX(-50%) scale(1); opacity: 1; }
+
+  /* Lens: lines bow and shrink away from the sung word, like a convex lens */
+  body[data-style="lens"] #lines { perspective: 1100px; }
+  body[data-style="lens"] .wd.cur { transform: scale(1.1); }
+
+  /* Drift: lines sit at different depths while the whole wall sways slowly */
+  body[data-style="drift"] #stage { perspective: 1400px; }
+  body[data-style="drift"] #lines { transform-style: preserve-3d; transform: rotateX(var(--rx, 5deg)) rotateY(var(--ry, 0deg)); }
+  body[data-style="drift"] .line { transform-style: preserve-3d; }
+  body[data-style="drift"] .wd.cur { transform: translateZ(50px) scale(1.1); }
+
+  /* ---- chrome ---- */
+  #meta { position: absolute; left: var(--pad); bottom: 28px; right: 24px; font-size: calc(15px * var(--ui-scale));
+          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .01em; }
+  #meta b { color: var(--hi); font-weight: 600; margin-right: .6em; }
+  #note { position: absolute; left: var(--pad); top: 50%; transform: translateY(-50%);
+          font-size: calc(clamp(22px, 3vw, 40px) * var(--ui-scale)); font-weight: 600; color: var(--secondary); max-width: 18em; line-height: 1.25; }
+  #note small { display: block; margin-top: .6em; font-size: calc(15px * var(--ui-scale)); font-weight: 400; opacity: .8; }
+  #note[hidden] { display: none; }
+  #toast { position: absolute; top: 20px; right: 24px; padding: 8px 14px; border-radius: 8px; font-size: calc(14px * var(--ui-scale));
+           background: rgba(255,255,255,.08); color: var(--hi); opacity: 0; transition: opacity .2s; pointer-events: none; }
+  #toast.on { opacity: 1; }
+
+  #settings-trigger { position:absolute; z-index:30; top:16px; left:16px; width:42px; height:42px; display:grid; place-items:center;
+    color:#dce9ff; background:rgba(10,16,31,.72); border:1px solid rgba(170,200,255,.18); border-radius:13px;
+    backdrop-filter:blur(16px); cursor:pointer; box-shadow:0 6px 24px rgba(0,0,0,.2); transition:background .18s,border-color .18s,transform .18s; }
+  #settings-trigger:hover, #settings-trigger[aria-expanded="true"] { background:rgba(35,52,82,.88); border-color:rgba(130,190,255,.55); }
+  #settings-trigger:active { transform:scale(.96); }
+  #settings-trigger svg { width:20px; height:20px; }
+  #picker { position:absolute; z-index:29; top:66px; left:16px; width:min(360px, calc(100vw - 32px)); display:flex; flex-direction:column; gap:10px;
+    padding:14px; border:1px solid rgba(160,190,245,.2); border-radius:16px; background:rgba(8,13,27,.92);
+    box-shadow:0 18px 60px rgba(0,0,0,.42); backdrop-filter:blur(22px); opacity:0; visibility:hidden; transform:translateY(-6px) scale(.985);
+    transform-origin:top left; transition:opacity .16s ease,transform .16s ease,visibility .16s; }
+  #picker.open { opacity:1; visibility:visible; transform:translateY(0) scale(1); }
+  #picker .panel-title { margin:0 0 2px; color:#e8f1ff; font-size:13px; font-weight:650; letter-spacing:.04em; }
+  #picker .setting { display:flex; flex-direction:column; align-items:stretch; gap:5px; padding:8px 9px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.035); }
+  #picker .setting-label { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:rgba(210,224,255,.65); }
+  #picker select { max-width:100%; width:100%; }
+  #picker select, #picker button { font-size:13px; }
+  #picker select { font:inherit; font-size:13px; color:#e6efff; background:rgba(255,255,255,.07); border:1px solid rgba(255,255,255,.13); border-radius:8px; padding:9px 10px; cursor:pointer; }
+  #picker select option { color:#111; }
+  #picker select:focus-visible, #settings-trigger:focus-visible { outline:2px solid #91caff; outline-offset:3px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+
+  @media (prefers-reduced-motion: reduce) {
+    #lines, .line, #hop, .wd, .ic, .constellation-edge, .constellation-star, .constellation-label, #constellation-world { transition: none !important; }
+    body[data-constellation] #stage:after { animation:none !important; }
+    #hop.jump { animation: none !important; }
+  }
+</style>
+</head>
+<body data-style="focus">
+<main id="stage" aria-live="off">
+  <svg id="constellation" aria-label="Word constellation lyrics" role="img" preserveAspectRatio="none"></svg>
+  <div id="lines"></div>
+  <div id="note" hidden></div>
+</main>
+<div id="meta"></div>
+<div id="toast" role="status"></div>
+<button id="settings-trigger" type="button" aria-label="Open display settings" aria-controls="picker" aria-expanded="false" title="Display settings">
+  <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4v6M7 14v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
+</button>
+<div id="picker" aria-label="Display settings" role="dialog" aria-modal="false" aria-hidden="true">
+  <h2 class="panel-title">Display settings</h2>
+  <label class="setting"><span class="setting-label">Style</span><select id="style" aria-label="Display style"></select></label>
+  <label class="setting"><span class="setting-label">Lyrics visibility</span><select id="word-window" aria-label="Visible word window">
+    <option value="all">Full constellation</option>
+    <option value="fade">Fade by distance</option>
+    <option value="3">3 previous / 3 next</option>
+    <option value="5" selected>5 previous / 5 next</option>
+    <option value="8">8 previous / 8 next</option>
+  </select></label>
+  <label class="setting"><span class="setting-label">Interface size</span><select id="zoom" aria-label="UI scale">
+    <option value="1">100%</option><option value="1.15">115%</option><option value="1.25" selected>125%</option>
+    <option value="1.4">140%</option><option value="1.5">150%</option><option value="1.75">175%</option><option value="2">200%</option>
+  </select></label>
+</div>
+<div id="hop" aria-hidden="true"></div>
+
+<script src="engine.js"></script>
+<script src="icons.js"></script>
+<script>
+(function () {
+  const E = window.LyricalEngine, I = window.LyricalIcons;
+  const $ = id => document.getElementById(id);
+  const hosted = !!(window.chrome && window.chrome.webview);
+  const reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+  const L = $('lines'), hop = $('hop');
+
+  const STYLES = {
+    focus:  { label: 'Focus' },                          // scrolling column
+    hopper: { label: 'Hopper', abs: true, single: true }, // one line, a bar hops between words
+    lens:   { label: 'Lens',   abs: true },               // convex lens falloff
+    drift:  { label: 'Drift',  abs: true },               // 3D wall, slowly swaying
+    icons:  { label: 'Icons',  abs: true, single: true }, // emoji pop in beside words
+    'constellation-fixed': { label: 'Constellation · Fixed' },
+    'constellation-evolving': { label: 'Constellation · Evolving' },
+    'constellation-hybrid': { label: 'Constellation · Hybrid' },
+    'constellation-nebula': { label: 'Constellation · Nebula' },
+    'constellation-orbit': { label: 'Constellation · Orbit' }
+  };
+
+  const svg = $('constellation');
+  let constellationWorld = null;
+  let constellationPoints = [];
+  let constellationSize = { width: 0, height: 0 };
+  const state = { doc: null, clock: new E.PlaybackClock(), offset: 0, active: -2, lastWord: -2, els: [], ord: [], lastP: {}, style: 'focus', stars: [], edges: [], activeGlobal: -1 };
+  try { state.offset = Number(localStorage.getItem('Lyrical.offset')) || 0; } catch (_) {}
+  const settingsTrigger = $('settings-trigger'), settingsPanel = $('picker');
+  function setSettingsOpen(open) {
+    settingsPanel.classList.toggle('open', open);
+    settingsPanel.setAttribute('aria-hidden', String(!open));
+    settingsTrigger.setAttribute('aria-expanded', String(open));
+    settingsTrigger.setAttribute('aria-label', open ? 'Close display settings' : 'Open display settings');
+  }
+  settingsTrigger.addEventListener('click', e => {
+    e.stopPropagation();
+    setSettingsOpen(!settingsPanel.classList.contains('open'));
+  });
+  settingsPanel.addEventListener('click', e => e.stopPropagation());
+  document.addEventListener('click', () => setSettingsOpen(false));
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && settingsPanel.classList.contains('open')) {
+      setSettingsOpen(false); settingsTrigger.focus();
+    }
+  });
+
+  const windowPicker = $('word-window'), zoomPicker = $('zoom');
+  let wordWindow = '5';
+  try {
+    wordWindow = localStorage.getItem('Lyrical.wordWindow') || '5';
+    const savedZoom = localStorage.getItem('Lyrical.zoom') || '1.25';
+    if ([...zoomPicker.options].some(o => o.value === savedZoom)) zoomPicker.value = savedZoom;
+    document.documentElement.style.setProperty('--ui-scale', zoomPicker.value);
+  } catch (_) {}
+  windowPicker.value = wordWindow;
+  windowPicker.addEventListener('change', () => {
+    wordWindow = windowPicker.value;
+    try { localStorage.setItem('Lyrical.wordWindow', wordWindow); } catch (_) {}
+    updateConstellation(state.activeGlobal);
+  });
+  zoomPicker.addEventListener('change', () => {
+    document.documentElement.style.setProperty('--ui-scale', zoomPicker.value);
+    document.body.dataset.zoom = zoomPicker.value;
+    try { localStorage.setItem('Lyrical.zoom', zoomPicker.value); } catch (_) {}
+    state.active = -2; buildConstellation();
+  });
+
+  // ---------- text and notes ----------
+  // A few media apps expose UTF-8 metadata after it has been decoded as
+  // Windows-1252 (for example, "åŒ—æžçŒ´å­"). Keep this display-side repair as
+  // a final guard; the Windows host applies the same repair before lookups.
+  const cp1252 = { '€':0x80, '‚':0x82, 'ƒ':0x83, '„':0x84, '…':0x85, '†':0x86, '‡':0x87, 'ˆ':0x88, '‰':0x89, 'Š':0x8a, '‹':0x8b, 'Œ':0x8c, 'Ž':0x8e, '‘':0x91, '’':0x92, '“':0x93, '”':0x94, '•':0x95, '–':0x96, '—':0x97, '˜':0x98, '™':0x99, 'š':0x9a, '›':0x9b, 'œ':0x9c, 'ž':0x9e, 'Ÿ':0x9f };
+  const mojibakeMarkers = /[ÃÂâåæçðœž\u0080-\u009f]/g;
+  function repairMojibake(value) {
+    const original = String(value || '');
+    const markers = original.match(mojibakeMarkers) || [];
+    if (markers.length < 2) return original;
+    const bytes = [];
+    for (const character of original) {
+      if (character.charCodeAt(0) <= 0xff) bytes.push(character.charCodeAt(0));
+      else if (Object.hasOwn(cp1252, character)) bytes.push(cp1252[character]);
+      else return original;
+    }
+    try {
+      const repaired = new TextDecoder('utf-8', { fatal: true }).decode(new Uint8Array(bytes));
+      return (repaired.match(mojibakeMarkers) || []).length < markers.length ? repaired : original;
+    } catch (_) { return original; }
+  }
+  function cleanTrackLabel(title, artist) {
+    const decodedTitle = repairMojibake(title);
+    const cleanedTitle = decodedTitle.replace(/\s*[（(][^()（）]*[\u3400-\u9fff][^()（）]*[)）]\s*$/, '').trim();
+    let cleanArtist = repairMojibake(artist);
+    let cleanTitle = cleanedTitle;
+    // Only split a filename-style title when we removed an alias and there is
+    // no artist supplied by the media session.
+    if (cleanedTitle !== decodedTitle && !cleanArtist.trim()) {
+      const dash = cleanedTitle.lastIndexOf('-');
+      if (dash > 0 && dash < cleanedTitle.length - 1) {
+        const spaceCamel = s => s.trim().replace(/([a-z])([A-Z])|([A-Z])([A-Z][a-z])/g, '$1$3 $2$4');
+        cleanTitle = spaceCamel(cleanedTitle.slice(0, dash));
+        cleanArtist = spaceCamel(cleanedTitle.slice(dash + 1));
+      }
+    }
+    return { title: cleanTitle, artist: cleanArtist };
+  }
+  function setNote(main, sub) {
+    const n = $('note');
+    if (!main) { n.hidden = true; return; }
+    n.hidden = false; n.textContent = main;
+    if (sub) { const s = document.createElement('small'); s.textContent = sub; n.appendChild(s); }
+  }
+  function setMeta(t) {
+    const m = $('meta'); m.textContent = '';
+    if (!t || !t.title) return;
+    const clean = cleanTrackLabel(t.title, t.artist);
+    const b = document.createElement('b'); b.textContent = clean.title; m.appendChild(b);
+    m.appendChild(document.createTextNode(clean.artist));
+  }
+
+  // A few lyric sources insert a filename-like provider header as a timed lyric
+  // line, e.g. "IWannaBeYours-ArcticMonkeys(北极猴子)". This is deliberately
+  // narrow so normal Chinese lyrics and translated lyric lines remain intact.
+  function isPackedProviderHeader(line) {
+    const text = (line.words || []).map(w => w.text).join('').trim();
+    return /^[A-Za-z0-9]+(?:[-_][A-Za-z0-9]+)+[（(][^()（）]*[\u3400-\u9fff][^()（）]*[)）]$/.test(text);
+  }
+  function removeProviderHeaders(doc) {
+    if (!doc || !doc.lines) return doc;
+    const lines = doc.lines.filter(line => !isPackedProviderHeader(line));
+    if (lines.length === doc.lines.length) return doc;
+    const finalEnd = lines.at(-1)?.endMs;
+    lines.forEach((line, index) => {
+      if (index + 1 < lines.length) line.endMs = lines[index + 1].startMs;
+      else if (finalEnd != null) line.endMs = finalEnd;
+      E.alignWords(line);
+    });
+    doc.lines = lines;
+    return doc;
+  }
+
+  // ---------- constellation layout ----------
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const isConstellation = name => name && name.startsWith('constellation-');
+  function seeded(n) { const x = Math.sin((n + 1) * 127.1 + 311.7) * 43758.5453; return x - Math.floor(x); }
+  function svgEl(tag, attrs, text) {
+    const el = document.createElementNS(SVG_NS, tag);
+    Object.entries(attrs || {}).forEach(([k,v]) => el.setAttribute(k, String(v)));
+    if (text != null) el.textContent = text;
+    return el;
+  }
+  function constellationPositions(count, mode, width, height) {
+    const pts = []; const marginX = Math.min(90, width * .09), marginY = Math.min(80, height * .13);
+    for (let i=0;i<count;i++) {
+      const t = count <= 1 ? .5 : i/(count-1);
+      let x, y;
+      if (mode === 'constellation-fixed') {
+        const cols = Math.max(4, Math.ceil(Math.sqrt(count * width / height)));
+        const rows = Math.max(1, Math.ceil(count / cols));
+        const row = Math.floor(i / cols), rawCol = i % cols;
+        const col = row % 2 ? cols - 1 - rawCol : rawCol;
+        x = marginX + (cols <= 1 ? .5 : col/(cols-1))*(width-2*marginX);
+        y = marginY + (rows <= 1 ? .5 : row/(rows-1))*(height-2*marginY) + (seeded(i)-.5)*Math.min(22,height/Math.max(rows,1)*.25);
+      } else if (mode === 'constellation-evolving') {
+        // Stable seeded field, revealed in sequence; nearby points form local clusters.
+        const band = Math.floor(i/7), within = i%7;
+        x = marginX + ((band*0.31 + within*0.105 + seeded(i)*.055) % 1)*(width-2*marginX);
+        y = marginY + seeded(i+23)*(height-2*marginY);
+      } else {
+        // Hybrid: a readable serpentine backbone with constellation-like local offsets.
+        const cols = Math.max(5, Math.ceil(Math.sqrt(count * width / height) * 1.2));
+        const rows = Math.max(1, Math.ceil(count / cols));
+        const row = Math.floor(i / cols), rawCol = i % cols;
+        const col = row % 2 ? cols - 1 - rawCol : rawCol;
+        x = marginX + (cols <= 1 ? .5 : col/(cols-1))*(width-2*marginX) + (seeded(i+91)-.5)*Math.min(24,width/cols*.22);
+        y = marginY + (rows <= 1 ? .5 : row/(rows-1))*(height-2*marginY) + (seeded(i+191)-.5)*Math.min(30,height/rows*.3);
+      }
+      pts.push({x:Math.max(24,Math.min(width-24,x)),y:Math.max(35,Math.min(height-35,y))});
+    }
+    return pts;
+  }
+  function buildConstellation() {
+    svg.textContent=''; state.stars=[]; state.edges=[]; constellationWorld = null; constellationPoints = [];
+    if (!isConstellation(state.style) || !state.els.length) return;
+    const width = Math.max(320, $('stage').clientWidth || innerWidth);
+    const height = Math.max(240, $('stage').clientHeight || innerHeight);
+    svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
+    constellationSize = { width, height };
+    constellationWorld = svgEl('g', { id: 'constellation-world' });
+    svg.appendChild(constellationWorld);
+    const words=[];
+    state.els.forEach((line, li) => line.wds.forEach((wd, wi) => {
+      words.push({text:line.ws[wi].textContent, line:li, word:wi});
+    }));
+    const mode = state.style === 'constellation-evolving' ? state.style : state.style === 'constellation-fixed' ? state.style : 'constellation-hybrid';
+    const pts=constellationPositions(words.length, mode, width, height);
+    constellationPoints = pts;
+    words.forEach((w,i)=>{
+      if(i>0) {
+        const a=pts[i-1], b=pts[i];
+        const edge=svgEl('line',{x1:a.x,y1:a.y,x2:b.x,y2:b.y,class:'constellation-edge','data-index':i});
+        constellationWorld.appendChild(edge); state.edges.push(edge);
+      }
+      const g=svgEl('g',{'data-index':i});
+      const star=svgEl('circle',{cx:pts[i].x,cy:pts[i].y,r: i%5===0?3.2:2.5,class:'constellation-star'});
+      const label=svgEl('text',{x:pts[i].x,y:pts[i].y+(i%2?20:-18),class:'constellation-label'},w.text);
+      g.appendChild(star); g.appendChild(label); constellationWorld.appendChild(g);
+      state.stars.push({star,label,line:w.line,word:w.word,index:i});
+    });
+    updateConstellation(state.activeGlobal);
+  }
+  function updateConstellation(active) {
+    if (!state.stars.length) return;
+    // Camera follows the active word: it grows at the center while the connected lyric field drifts past it.
+    if (constellationWorld && active >= 0 && constellationPoints[active]) {
+      const p = constellationPoints[active];
+      const dx = constellationSize.width * 0.5 - p.x;
+      const dy = constellationSize.height * 0.5 - p.y;
+      constellationWorld.setAttribute('transform', `translate(${dx.toFixed(1)} ${dy.toFixed(1)})`);
+    }
+    state.stars.forEach((s,i)=>{
+      const past=i<active, current=i===active, future=i>active;
+      const distance = Math.abs(i - active);
+      const windowCount = wordWindow === 'all' || wordWindow === 'fade' ? Infinity : Number(wordWindow);
+      const outsideWindow = distance > windowCount;
+      s.star.setAttribute('class','constellation-star'+(past?' past':current?' active':' future'));
+      s.star.setAttribute('r',current?7:past?2.6:2.2);
+      s.label.setAttribute('class','constellation-label'+(past?' past':current?' active':' future')+((state.style==='constellation-hybrid' && distance>12)?' far':''));
+      s.label.style.display = outsideWindow && wordWindow !== 'fade' ? 'none' : '';
+      s.star.style.display = outsideWindow && wordWindow !== 'fade' ? 'none' : '';
+      let opacity;
+      if (current) opacity = 1;
+      else if (wordWindow === 'fade') opacity = past ? Math.max(.025, .62 * Math.pow(.78, distance)) : (state.style==='constellation-evolving' ? .04 : Math.max(.025, .5 * Math.pow(.82, distance)));
+      else if (outsideWindow) opacity = 0;
+      else if (state.style==='constellation-fixed') opacity = past ? .58 : .62;
+      else if (state.style==='constellation-evolving') opacity = past ? .52 : .07;
+      else opacity = past ? .48 : (distance < 8 ? .48 : .12);
+      s.label.style.opacity = String(opacity);
+      s.star.style.opacity = String(current ? 1 : Math.min(.55, opacity + .12));
+    });
+    state.edges.forEach((e,j)=>{
+      const idx=j+1; const cls='constellation-edge'+(idx<=active?' past':'')+(idx===active?' active':'');
+      e.setAttribute('class',cls);
+      const distance = Math.min(Math.abs(idx - active), Math.abs((idx - 1) - active));
+      const windowCount = wordWindow === 'all' || wordWindow === 'fade' ? Infinity : Number(wordWindow);
+      const outsideWindow = distance > windowCount;
+      e.style.display = outsideWindow && wordWindow !== 'fade' ? 'none' : '';
+      const baseOpacity = state.style==='constellation-evolving' && idx>active ? .08 : idx<=active ? (idx===active?1:.65) : .38;
+      e.style.opacity = wordWindow === 'fade' ? String(Math.max(.015, baseOpacity * Math.pow(.78, distance))) : outsideWindow ? '0' : String(baseOpacity);
+    });
+  }
+
+  // ---------- building the lines ----------
+  function showDoc(doc) {
+    state.doc = doc; state.active = -2; state.lastWord = -2; state.lastP = {};
+    if (hop.parentNode) hop.parentNode.removeChild(hop);
+    L.textContent = ''; state.els = []; state.ord = [];
+    svg.textContent = ''; state.stars = []; state.edges = []; state.activeGlobal = -1;
+    if (!doc || !doc.lines.length) return;
+    let count = 0;
+    doc.lines.forEach(line => {
+      const el = document.createElement('p');
+      el.className = 'line' + (line.words.length ? '' : ' gap');
+      el.setAttribute('aria-label', line.words.map(w => repairMojibake(w.text)).join(' ') || line.text);
+      el.isGap = !line.words.length;
+      el.wds = []; el.ws = [];
+      line.words.forEach(w => {
+        // Provider payloads can contain mojibake in the lyric body as well as
+        // in track metadata. Repair only the text displayed to the user;
+        // timestamps and engine timing are left intact.
+        const displayText = repairMojibake(w.text);
+        const wd = document.createElement('span'); wd.className = 'wd';
+        const s = document.createElement('span'); s.className = 'w'; s.textContent = displayText; wd.appendChild(s);
+        const icon = I ? I.iconFor(displayText) : null;
+        if (icon) { const ic = document.createElement('i'); ic.className = 'ic'; ic.textContent = icon; ic.setAttribute('aria-hidden', 'true'); wd.appendChild(ic); }
+        el.appendChild(wd); el.wds.push(wd); el.ws.push(s);
+      });
+      L.appendChild(el); state.els.push(el);
+      state.ord.push(count); if (!el.isGap) count++;
+    });
+    setNote(null);
+    buildConstellation();
+    if (state.style === 'focus') L.style.transform = 'translateY(' + Math.round(innerHeight * 0.45) + 'px)';
+  }
+
+  // Each line gets now / pN (already sung) / fN (still to come) so styles can be written in CSS.
+  function classify(i) {
+    state.els.forEach((el, k) => {
+      const d = k - i;
+      let c = 'line' + (el.isGap ? ' gap' : '');
+      if (d === 0 && i >= 0) c += ' now';
+      else if (d < 0) c += ' past p' + Math.min(3, -d);
+      else c += ' f' + Math.min(3, d);
+      el.className = c;
+    });
+  }
+
+  // ---------- per-style layout, run when the active line changes ----------
+  const lensScale = a => Math.max(.3, Math.pow(.72, a));
+  function lensY(ad) {
+    let y = 0; const n = Math.floor(ad);
+    for (let j = 1; j <= n; j++) y += (lensScale(j - 1) + lensScale(j)) / 2;
+    const f = ad - n; if (f > 0) y += f * (lensScale(n) + lensScale(n + 1)) / 2;
+    return y;
+  }
+  function lineStep() {
+    const el = state.els.find(e => !e.isGap);
+    return (el && parseFloat(getComputedStyle(el).fontSize)) * 1.25 || 70;
+  }
+  function anchorOrd(i) { return i < 0 ? -1 : (state.els[i].isGap ? state.ord[i] - 0.5 : state.ord[i]); }
+
+  function layout(i) {
+    const els = state.els; if (!els.length) return;
+    const st = state.style;
+    if (st === 'focus') {
+      const target = i >= 0 ? els[i] : els.find(e => !e.isGap);
+      if (target) L.style.transform = 'translateY(' + Math.round(innerHeight * 0.42 - (target.offsetTop + target.offsetHeight / 2)) + 'px)';
+    } else if (st === 'lens' || st === 'drift') {
+      const a = anchorOrd(i), step = lineStep();
+      els.forEach((el, k) => {
+        if (el.isGap) return;
+        const d = state.ord[k] - a, ad = Math.abs(d), sign = d < 0 ? -1 : 1;
+        if (st === 'lens') {
+          el.style.opacity = ad > 4 ? 0 : Math.max(0, 1 - ad * .26).toFixed(2);
+          el.style.transform = 'translate3d(' + (ad * ad * 14).toFixed(1) + 'px,' + (sign * lensY(ad) * step).toFixed(1) + 'px,0) translateY(-50%) scale(' +
+            lensScale(ad).toFixed(3) + ') rotateX(' + (-d * 6).toFixed(1) + 'deg)';
+        } else {
+          el.style.opacity = ad > 4 ? 0 : Math.max(0, 1 - ad * .2).toFixed(2);
+          const z = ad < 0.25 ? 120 : -ad * 110;
+          el.style.transform = 'translate3d(' + (d * 26).toFixed(1) + 'px,' + (d * step * 1.05).toFixed(1) + 'px,' + z.toFixed(0) + 'px) translateY(-50%)';
+        }
+      });
+    }
+  }
+
+  function moveMarker(el, wi) {
+    const wd = el.wds[Math.max(0, wi)]; if (!wd) return;
+    const fresh = hop.parentNode !== el;
+    if (fresh) { el.appendChild(hop); hop.style.transition = 'none'; }
+    hop.style.left = wd.offsetLeft + 'px';
+    hop.style.width = wd.firstChild.offsetWidth + 'px';
+    hop.style.top = (wd.offsetTop + wd.offsetHeight) + 'px';
+    if (fresh) { void hop.offsetWidth; hop.style.transition = ''; }
+    else { hop.classList.remove('jump'); void hop.offsetWidth; hop.classList.add('jump'); }
+  }
+
+  function setActive(i) {
+    state.active = i; state.lastWord = -2;
+    if (i >= 0) { const first = state.stars.find(s => s.line === i); state.activeGlobal = first ? first.index : state.activeGlobal; }
+    classify(i); layout(i);
+    if (isConstellation(state.style)) updateConstellation(state.activeGlobal);
+    if (i >= 0) state.els[i].wds.forEach(w => w.classList.remove('sung', 'cur'));
+    if (state.style === 'hopper' && i >= 0 && !state.els[i].isGap) moveMarker(state.els[i], 0);
+  }
+
+  function onWord(line, word) {
+    const el = state.els[line];
+    state.activeGlobal = state.stars.findIndex(s => s.line === line && s.word === word);
+    updateConstellation(state.activeGlobal);
+    el.wds.forEach((w, k) => { w.classList.toggle('sung', k <= word); w.classList.toggle('cur', k === word); });
+    if (state.style === 'hopper' && word >= 0) moveMarker(el, word);
+  }
+
+  function drift(now) {
+    if (reduced) return;
+    const t = now / 1000;
+    L.style.setProperty('--ry', (Math.sin(t * .33) * 8).toFixed(2) + 'deg');
+    L.style.setProperty('--rx', (5 + Math.cos(t * .25) * 3).toFixed(2) + 'deg');
+  }
+
+  // ---------- frame loop ----------
+  function paint(now) {
+    if (state.doc && state.els.length) {
+      const pos = state.clock.positionAt(now) + state.offset;
+      const loc = E.locate(state.doc, pos);
+      if (loc.line !== state.active) setActive(loc.line);
+      if (loc.line >= 0) {
+        const el = state.els[loc.line];
+        el.ws.forEach((s, k) => {
+          const p = k < loc.word ? 1 : (k === loc.word ? loc.progress : 0);
+          const key = loc.line * 1000 + k;
+          if (state.lastP[key] !== p) { s.style.setProperty('--p', p.toFixed(3)); state.lastP[key] = p; }
+        });
+        if (loc.word !== state.lastWord) { state.lastWord = loc.word; onWord(loc.line, loc.word); }
+      }
+    }
+    if (state.style === 'drift') drift(now);
+    requestAnimationFrame(paint);
+  }
+
+  // ---------- style picker ----------
+  const picker = $('style');
+  Object.keys(STYLES).forEach(k => { const o = document.createElement('option'); o.value = k; o.textContent = STYLES[k].label; picker.appendChild(o); });
+
+  function applyStyle(name, quiet) {
+    if (!STYLES[name]) name = 'focus';
+    const def = STYLES[name];
+    state.style = name;
+    document.body.dataset.style = name;
+    document.body.toggleAttribute('data-constellation', isConstellation(name));
+    document.body.toggleAttribute('data-abs', !!def.abs);
+    document.body.toggleAttribute('data-single', !!def.single);
+    state.els.forEach(el => { el.style.transform = ''; el.style.opacity = ''; });
+    L.style.transform = ''; L.style.removeProperty('--rx'); L.style.removeProperty('--ry');
+    if (hop.parentNode) hop.parentNode.removeChild(hop);
+    picker.value = name;
+    try { localStorage.setItem('Lyrical.style', name); } catch (_) {}
+    buildConstellation();
+    state.active = -2; // forces a fresh layout on the next frame
+    if (name === 'focus' && state.els.length) L.style.transform = 'translateY(' + Math.round(innerHeight * 0.45) + 'px)';
+    if (!quiet) toast('Style: ' + def.label);
+  }
+  picker.addEventListener('change', () => { applyStyle(picker.value); picker.blur(); });
+
+  // ---------- small UI helpers ----------
+  function toast(text) {
+    const t = $('toast'); t.textContent = text; t.classList.add('on');
+    clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('on'), 1200);
+  }
+  function nudge(ms) {
+    state.offset += ms;
+    try { localStorage.setItem('Lyrical.offset', String(state.offset)); } catch (_) {}
+    toast('Sync offset ' + (state.offset > 0 ? '+' : '') + state.offset + ' ms');
+  }
+  addEventListener('resize', () => { state.active = -2; buildConstellation(); });
+  addEventListener('keydown', e => {
+    if (settingsPanel.contains(e.target) || e.target === settingsTrigger) {
+      if (e.key === 'Escape') return;
+      if (['[',']','0','s','S','F11'].includes(e.key)) return;
+    }
+    if (e.key === '[') nudge(-50);
+    else if (e.key === ']') nudge(50);
+    else if (e.key === '0') { state.offset = 0; nudge(0); }
+    else if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey) {
+      const names = Object.keys(STYLES); applyStyle(names[(names.indexOf(state.style) + 1) % names.length]);
+    }
+    else if (hosted && e.key === 'F11') { e.preventDefault(); window.chrome.webview.postMessage({ type: 'toggleFullscreen' }); }
+    else if (hosted && e.ctrlKey && e.key.toLowerCase() === 't') { e.preventDefault(); window.chrome.webview.postMessage({ type: 'togglePin' }); toast('Pin on top toggled'); }
+  });
+
+  // ---------- messages from the Windows app ----------
+  function handle(m) {
+    if (!m || !m.type) return;
+    if (m.type === 'track') {
+      setMeta(m); showDoc(null); setNote('Looking for lyrics…');
+    } else if (m.type === 'lyrics') {
+      const doc = m.lrc ? removeProviderHeaders(E.parseLrc(m.lrc)) : null;
+      if (doc && doc.lines.length) { showDoc(doc); }
+      else { showDoc(null); setNote('No lyrics found for this track.', m.plain ? 'Only unsynced lyrics exist for it.' : 'Try another version of the song.'); }
+    } else if (m.type === 'clock') {
+      state.clock.anchor(m.positionMs, !!m.playing, performance.now(), m.rate || 1);
+    } else if (m.type === 'idle') {
+      setMeta(null); showDoc(null); setNote('Nothing playing.', 'Start a song in Spotify or Apple Music.');
+    } else if (m.type === 'theme') {
+      const r = document.documentElement.style;
+      if (m.background) r.setProperty('--bg', m.background);
+      if (m.lyric) r.setProperty('--lyric', m.lyric);
+      if (m.highlight) r.setProperty('--hi', m.highlight);
+      if (m.secondary) r.setProperty('--secondary', m.secondary);
+    }
+  }
+
+  let saved = 'focus';
+  try { saved = localStorage.getItem('Lyrical.style') || 'focus'; } catch (_) {}
+  applyStyle(saved, true);
+
+  if (hosted) {
+    window.chrome.webview.addEventListener('message', e => handle(e.data));
+    handle({ type: 'idle' });
+    window.chrome.webview.postMessage({ type: 'ready' });
+  } else {
+    // Demo for opening index.html in a browser: original sample lyrics, looping.
+    const lrc = [
+      '[00:02.00] The kettle sings before the sun',
+      '[00:06.50] and every window learns your name',
+      '[00:11.00] I count the steps along the hall',
+      '[00:15.50] while the whole house hums the same',
+      '[00:20.00]',
+      '[00:24.00] Hold the morning, hold it slow',
+      '[00:28.50] let the quiet carry us home',
+      '[00:33.00] Nothing here is moving fast',
+      '[00:37.50] and nothing here is gone'
+    ].join('\n');
+    handle({ type: 'track', title: 'Morning Kettle (demo)', artist: 'Sample Artist' });
+    handle({ type: 'lyrics', lrc });
+    let paused = false, t0 = performance.now(), basePos = 0;
+    const loopMs = 44000;
+    state.clock.anchor(0, true, performance.now());
+    setInterval(() => { if (!paused && basePos + performance.now() - t0 > loopMs) { basePos = 0; t0 = performance.now(); state.clock.anchor(0, true, performance.now()); } }, 250);
+    addEventListener('keydown', e => {
+      if (e.key === ' ') {
+        const cur = state.clock.positionAt(performance.now());
+        paused = !paused; basePos = cur; t0 = performance.now();
+        state.clock.anchor(cur, !paused, performance.now());
+        toast(paused ? 'Paused (demo)' : 'Playing (demo)');
+      }
+    });
+  }
+  requestAnimationFrame(paint);
+})();
+</script>
+</body>
+</html>

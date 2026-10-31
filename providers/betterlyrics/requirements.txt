@@ -1,0 +1,1 @@
+# No third-party Python dependencies; worker.py uses the standard library only.
