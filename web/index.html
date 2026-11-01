@@ -326,6 +326,9 @@
   body[data-style="swordsman"] #space-bg { opacity:1; }
   body[data-style="swordsman"] #meta { z-index:4; }
   body[data-style="swordsman"] #picker { z-index:30; }
+  .swordsman-setting { display:none; }
+  body[data-style="swordsman"] .swordsman-setting { display:block; }
+  #swordsman-word-settings input[type="range"] { width:100%; }
 
 </style>
 </head>
@@ -397,6 +400,16 @@
   <label class="setting"><span class="setting-label">Lyric 3D depth</span><select id="lyric-depth" aria-label="Lyric 3D depth">
     <option value="on">Enabled</option><option value="off">Disabled</option>
   </select></label>
+  <div class="setting swordsman-setting" id="swordsman-word-settings">
+    <span class="setting-label">Swordsman word colours</span>
+    <div class="colour-grid">
+      <label>Primary · focused <input id="swordsman-primary" type="color" value="#ffe0a0" aria-label="Swordsman focused word colour"></label>
+      <label>Secondary · queue <input id="swordsman-secondary" type="color" value="#8b9aaa" aria-label="Swordsman queue word colour"></label>
+    </div>
+    <label class="setting-label" for="swordsman-queue-count">Words visible (including focus) <span id="swordsman-queue-count-value">3</span></label>
+    <input id="swordsman-queue-count" type="range" min="2" max="5" step="1" value="3" aria-label="Number of visible Swordsman words">
+    <p class="art-note">The focused word uses the primary colour. Upcoming words use the secondary colour with reduced opacity.</p>
+  </div>
   <div class="setting">
     <span class="setting-label">Local background image</span>
     <button id="choose-background" type="button">Choose image…</button>
@@ -424,6 +437,25 @@
   const E = window.LyricalEngine, I = window.LyricalIcons;
   const $ = id => document.getElementById(id);
   const hosted = !!(window.chrome && window.chrome.webview);
+  const swordsmanPrimary = $('swordsman-primary');
+  const swordsmanSecondary = $('swordsman-secondary');
+  const swordsmanQueueCount = $('swordsman-queue-count');
+  const swordsmanQueueCountValue = $('swordsman-queue-count-value');
+  function persistSwordsmanSetting(key, value) {
+    try { localStorage.setItem(key, String(value)); } catch (_) {}
+  }
+  try {
+    swordsmanPrimary.value = localStorage.getItem('Lyrical.swordsmanPrimary') || '#ffe0a0';
+    swordsmanSecondary.value = localStorage.getItem('Lyrical.swordsmanSecondary') || '#8b9aaa';
+    swordsmanQueueCount.value = localStorage.getItem('Lyrical.swordsmanQueueCount') || '3';
+  } catch (_) {}
+  swordsmanQueueCountValue.textContent = swordsmanQueueCount.value;
+  swordsmanPrimary.addEventListener('input', () => persistSwordsmanSetting('Lyrical.swordsmanPrimary', swordsmanPrimary.value));
+  swordsmanSecondary.addEventListener('input', () => persistSwordsmanSetting('Lyrical.swordsmanSecondary', swordsmanSecondary.value));
+  swordsmanQueueCount.addEventListener('input', () => {
+    swordsmanQueueCountValue.textContent = swordsmanQueueCount.value;
+    persistSwordsmanSetting('Lyrical.swordsmanQueueCount', swordsmanQueueCount.value);
+  });
   const reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const L = $('lines'), hop = $('hop');
 
@@ -1410,6 +1442,24 @@
   catch (error) { console.warn('Swordsman font unavailable; using fallback word sprites.', error); }
   const wordRoot=new THREE.Group();scene.add(wordRoot);
   const wordMeshes=[]; const wordMaterial=mat(0xffe0a0,.35,.24,0x8b4b14,.9);
+  const defaultPrimary='#ffe0a0', defaultSecondary='#8b9aaa';
+  function readSwordsmanPrefs(){
+    let primary=defaultPrimary, secondary=defaultSecondary, count=3;
+    try {
+      primary=localStorage.getItem('Lyrical.swordsmanPrimary')||defaultPrimary;
+      secondary=localStorage.getItem('Lyrical.swordsmanSecondary')||defaultSecondary;
+      count=Math.max(2,Math.min(5,parseInt(localStorage.getItem('Lyrical.swordsmanQueueCount')||'3',10)||3));
+    } catch (_) {}
+    return {primary,secondary,count};
+  }
+  function colourMaterial(material, hex, opacity){
+    if(!material) return;
+    material.color?.set(hex);
+    if(material.emissive) material.emissive.set(hex);
+    material.transparent=true;
+    material.opacity=opacity;
+    material.needsUpdate=true;
+  }
   const fallbackCanvas=document.createElement('canvas');fallbackCanvas.width=1024;fallbackCanvas.height=256;
   const fctx=fallbackCanvas.getContext('2d');
   function makeWordMesh(text){
@@ -1418,7 +1468,7 @@
       const geometry=new TextGeometry(text||' ',{font,size:.38,depth:.09,curveSegments:5,bevelEnabled:true,bevelThickness:.012,bevelSize:.009,bevelSegments:2});geometry.computeBoundingBox();geometry.center();
       mesh=new THREE.Mesh(geometry,wordMaterial.clone());
     } else {
-      fctx.clearRect(0,0,1024,256);fctx.font='bold 128px Arial';fctx.textAlign='center';fctx.textBaseline='middle';fctx.fillStyle='#ffe0a0';fctx.shadowColor='#ff9d42';fctx.shadowBlur=18;fctx.fillText(text||' ',512,128);
+      fctx.clearRect(0,0,1024,256);fctx.font='bold 128px Arial';fctx.textAlign='center';fctx.textBaseline='middle';fctx.fillStyle=defaultPrimary;fctx.shadowColor='#ff9d42';fctx.shadowBlur=18;fctx.fillText(text||' ',512,128);
       const texture=new THREE.CanvasTexture(fallbackCanvas);texture.colorSpace=THREE.SRGBColorSpace;
       mesh=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(1,text.length*.24),.48),new THREE.MeshBasicMaterial({map:texture,transparent:true,side:THREE.DoubleSide}));
     }
@@ -1473,8 +1523,11 @@
       impactLight.intensity=Math.max(0,impactLight.intensity-.65);
     } else {swordPivot.rotation.z=-.85;}
     // Five words in a perspective queue: target plus four upcoming words.
+    const swordsmanPrefs=readSwordsmanPrefs();
+    const visibleWordCount=swordsmanPrefs.count;
     for(let i=0;i<5;i++){
       const wi=active+i;let mesh=wordMeshes[i];const item=flatWords[wi];
+      if(i>=visibleWordCount){mesh.visible=false;continue;}
       if(!item){mesh.visible=false;continue;}
       if(mesh.userData.lyricText!==item.text){mesh=replaceMesh(i,item.text);}
       const age=ms-item.startMs;const duration=Math.max(100,item.endMs-item.startMs);
@@ -1489,8 +1542,15 @@
       const scale=1-i*.13;mesh.scale.setScalar(scale);
       const hitOffset=Math.min(duration*.22,130)+Math.max(90,Math.min(230,duration*.55))*.5;
       const hitMs=Math.min(item.endMs-20,item.startMs+hitOffset);
-      const alpha=i===0?Math.max(.12,1-Math.max(0,ms-hitMs)/260):Math.max(.12,1-i*.19);
-      if(mesh.material){mesh.material.transparent=true;mesh.material.opacity=alpha;}
+      const alpha=i===0?1:Math.max(.055,.28-i*.045);
+      if(mesh.material){
+        if(mesh.material.map){
+          mesh.material.color.set(i===0?swordsmanPrefs.primary:swordsmanPrefs.secondary);
+          mesh.material.transparent=true;mesh.material.opacity=alpha;mesh.material.needsUpdate=true;
+        } else {
+          colourMaterial(mesh.material,i===0?swordsmanPrefs.primary:swordsmanPrefs.secondary,alpha);
+        }
+      }
       mesh.visible=!(i===0&&lastImpactToken===active&&ms>hitMs);
       // Upcoming words travel forward in depth and slightly toward the strike lane.
       if(i>0){const lead=Math.max(0,Math.min(1,(ms-(item.startMs-850))/850));mesh.position.x=strikeX+i*.16-lead*(i*.12);mesh.position.z=-.35-i*1.05+lead*(i*.42);}
