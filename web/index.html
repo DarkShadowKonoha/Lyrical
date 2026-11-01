@@ -407,7 +407,9 @@
       <label>Secondary · queue <input id="swordsman-secondary" type="color" value="#8b9aaa" aria-label="Swordsman queue word colour"></label>
     </div>
     <label class="setting-label" for="swordsman-queue-count">Words visible (including focus) <span id="swordsman-queue-count-value">3</span></label>
-    <input id="swordsman-queue-count" type="range" min="2" max="5" step="1" value="3" aria-label="Number of visible Swordsman words">
+    <input id="swordsman-queue-count" type="range" min="1" max="5" step="1" value="3" aria-label="Number of visible Swordsman words">
+    <label class="setting-label" for="swordsman-slash-timing">Slash timing (% of focused word) <span id="swordsman-slash-timing-value">62%</span></label>
+    <input id="swordsman-slash-timing" type="range" min="0" max="100" step="1" value="62" aria-label="Sword slash timing as a percentage of focused word duration">
     <p class="art-note">The focused word uses the primary colour. Upcoming words use the secondary colour with reduced opacity.</p>
   </div>
   <div class="setting">
@@ -441,6 +443,8 @@
   const swordsmanSecondary = $('swordsman-secondary');
   const swordsmanQueueCount = $('swordsman-queue-count');
   const swordsmanQueueCountValue = $('swordsman-queue-count-value');
+  const swordsmanSlashTiming = $('swordsman-slash-timing');
+  const swordsmanSlashTimingValue = $('swordsman-slash-timing-value');
   function persistSwordsmanSetting(key, value) {
     try { localStorage.setItem(key, String(value)); } catch (_) {}
   }
@@ -448,13 +452,19 @@
     swordsmanPrimary.value = localStorage.getItem('Lyrical.swordsmanPrimary') || '#ffe0a0';
     swordsmanSecondary.value = localStorage.getItem('Lyrical.swordsmanSecondary') || '#8b9aaa';
     swordsmanQueueCount.value = localStorage.getItem('Lyrical.swordsmanQueueCount') || '3';
+    swordsmanSlashTiming.value = localStorage.getItem('Lyrical.swordsmanSlashTiming') || '62';
   } catch (_) {}
   swordsmanQueueCountValue.textContent = swordsmanQueueCount.value;
+  swordsmanSlashTimingValue.textContent = swordsmanSlashTiming.value + '%';
   swordsmanPrimary.addEventListener('input', () => persistSwordsmanSetting('Lyrical.swordsmanPrimary', swordsmanPrimary.value));
   swordsmanSecondary.addEventListener('input', () => persistSwordsmanSetting('Lyrical.swordsmanSecondary', swordsmanSecondary.value));
   swordsmanQueueCount.addEventListener('input', () => {
     swordsmanQueueCountValue.textContent = swordsmanQueueCount.value;
     persistSwordsmanSetting('Lyrical.swordsmanQueueCount', swordsmanQueueCount.value);
+  });
+  swordsmanSlashTiming.addEventListener('input', () => {
+    swordsmanSlashTimingValue.textContent = swordsmanSlashTiming.value + '%';
+    persistSwordsmanSetting('Lyrical.swordsmanSlashTiming', swordsmanSlashTiming.value);
   });
   const reduced = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
   const L = $('lines'), hop = $('hop');
@@ -1400,7 +1410,7 @@
 
   const mat = (color, metalness=0.25, roughness=0.42, emissive=0x000000, emissiveIntensity=0) => new THREE.MeshStandardMaterial({color, metalness, roughness, emissive, emissiveIntensity});
   const armor = mat(0x252b39, .82, .28), armorLight = mat(0x596274, .8, .26), dark = mat(0x10131c, .45, .5), leather = mat(0x39231e, .1, .8), gold = mat(0x9c7440, .72, .28), bladeMat = mat(0xd5e4f7, .92, .19, 0x294a77, .35);
-  const char = new THREE.Group(); char.position.set(-2.15, 0, 0); scene.add(char);
+  const char = new THREE.Group(); char.position.set(-2.15, 0, 0); char.scale.setScalar(1.32); scene.add(char);
   const addMesh=(parent,geo,material,pos,rot)=>{const m=new THREE.Mesh(geo,material);m.position.set(...pos);if(rot)m.rotation.set(...rot);parent.add(m);return m;};
   const box=(parent,size,material,pos,rot)=>addMesh(parent,new THREE.BoxGeometry(...size),material,pos,rot);
   const sphere=(parent,r,material,pos,scale=[1,1,1])=>{const m=addMesh(parent,new THREE.SphereGeometry(r,16,12),material,pos);m.scale.set(...scale);return m;};
@@ -1444,13 +1454,15 @@
   const wordMeshes=[]; const wordMaterial=mat(0xffe0a0,.35,.24,0x8b4b14,.9);
   const defaultPrimary='#ffe0a0', defaultSecondary='#8b9aaa';
   function readSwordsmanPrefs(){
-    let primary=defaultPrimary, secondary=defaultSecondary, count=3;
+    let primary=defaultPrimary, secondary=defaultSecondary, count=3, slashTiming=62;
     try {
       primary=localStorage.getItem('Lyrical.swordsmanPrimary')||defaultPrimary;
       secondary=localStorage.getItem('Lyrical.swordsmanSecondary')||defaultSecondary;
-      count=Math.max(2,Math.min(5,parseInt(localStorage.getItem('Lyrical.swordsmanQueueCount')||'3',10)||3));
+      count=Math.max(1,Math.min(5,parseInt(localStorage.getItem('Lyrical.swordsmanQueueCount')||'3',10)||3));
+      const storedTiming=localStorage.getItem('Lyrical.swordsmanSlashTiming');
+      if(storedTiming!==null && storedTiming!=='') slashTiming=Math.max(0,Math.min(100,parseInt(storedTiming,10)||0));
     } catch (_) {}
-    return {primary,secondary,count};
+    return {primary,secondary,count,slashTiming};
   }
   function colourMaterial(material, hex, opacity){
     if(!material) return;
@@ -1504,14 +1516,15 @@
   function animate(now){requestAnimationFrame(animate);const styleOn=document.body.dataset.style==='swordsman';if(!styleOn){enabled=false;return;}enabled=true;
     if(window.__lyricalSwordsmanDoc!==lastDoc){lastDoc=window.__lyricalSwordsmanDoc;rebuildWords(lastDoc);}
     const ms=Number(window.__lyricalSwordsmanPosition)||0;const active=findActive(ms);
+    const swordsmanPrefs=readSwordsmanPrefs();
     if(active!==lastActive&&active>=0){lastActive=active;}
     // Target timing is tied to the word's start/end window. The slash crosses the target around 34% into that window.
     const current=active>=0?flatWords[active]:null;const next=active>=0?flatWords[active+1]:null;
     if(current){const duration=Math.max(100,current.endMs-current.startMs);const phase=Math.max(0,Math.min(1,(ms-current.startMs)/duration));
       // Fast words compress the wind-up and sweep; long words get a more deliberate attack.
       const wind=Math.min(130,duration*.22), strikeSpan=Math.max(90,Math.min(230,duration*.55));
-      // The word shatters at the midpoint of the visible sword sweep, not before the blade reaches it.
-      const impactMs=Math.min(current.endMs-20,current.startMs+wind+strikeSpan*.5);
+      // User-adjustable impact point, expressed as a percentage of this word's duration.
+      const impactMs=Math.min(current.endMs-1,current.startMs+duration*(swordsmanPrefs.slashTiming/100));
       const token=active;
       if(ms>=impactMs&&lastImpactToken!==token){const target=wordMeshes[0];if(target)burstWord(target,token);lastImpactToken=token;}
       const attackP=Math.max(0,Math.min(1,(ms-(current.startMs+wind))/strikeSpan));
@@ -1523,7 +1536,6 @@
       impactLight.intensity=Math.max(0,impactLight.intensity-.65);
     } else {swordPivot.rotation.z=-.85;}
     // Five words in a perspective queue: target plus four upcoming words.
-    const swordsmanPrefs=readSwordsmanPrefs();
     const visibleWordCount=swordsmanPrefs.count;
     for(let i=0;i<5;i++){
       const wi=active+i;let mesh=wordMeshes[i];const item=flatWords[wi];
@@ -1536,12 +1548,11 @@
       // Front-facing queue with a slight three-quarter angle: depth, not a long sideways row,
       // creates the sense of words approaching the swordsman.
       const depth=i*1.05;
-      const strikeX=-.62, strikeY=1.78;
+      const strikeX=.38, strikeY=1.78;
       mesh.position.set(strikeX+i*.16,strikeY-i*.045,-.35-depth);
       mesh.rotation.y=-.12-i*.018;mesh.rotation.x=.012+i*.012;
-      const scale=1-i*.13;mesh.scale.setScalar(scale);
-      const hitOffset=Math.min(duration*.22,130)+Math.max(90,Math.min(230,duration*.55))*.5;
-      const hitMs=Math.min(item.endMs-20,item.startMs+hitOffset);
+      const scale=i===0?1.42:1-i*.13;mesh.scale.setScalar(scale);
+      const hitMs=Math.min(item.endMs-1,item.startMs+duration*(swordsmanPrefs.slashTiming/100));
       const alpha=i===0?1:Math.max(.055,.28-i*.045);
       if(mesh.material){
         if(mesh.material.map){
