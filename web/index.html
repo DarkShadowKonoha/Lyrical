@@ -4,6 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Lyrical</title>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/"
+  }
+}
+</script>
+
 <style>
   :root {
     --bg: #0e1020;
@@ -12,6 +21,7 @@
     --secondary: #7c84b3;  /* track info, hints */
     --edge: #69afff;       /* constellation paths and active accents */
     --past: #c7a77f;
+    --custom-background: none;
     --ease: cubic-bezier(.2,.7,.2,1);
     --pad: calc(clamp(24px, 7vw, 120px) * var(--ui-scale));
     --fs: calc(clamp(28px, 5.2vw, 76px) * var(--ui-scale));
@@ -23,9 +33,131 @@
 
   #stage { position: absolute; inset: 0; overflow: hidden; }
   #stage { font-size: calc(16px * var(--ui-scale)); }
+  #space-bg { position:absolute; inset:0; z-index:1; pointer-events:none; opacity:0; transition:opacity .45s ease, background .25s ease; }
+  #custom-background-image { position:absolute; inset:0; z-index:0; width:100%; height:100%; display:none; pointer-events:none; }
+  body[data-space="image"] #custom-background-image { display:block; }
+  body[data-space="image"][data-image-fit="fill"] #custom-background-image { width:100%; height:100%; object-fit:cover; }
+  body[data-space="image"][data-image-fit="fit"] #custom-background-image { width:100%; height:100%; object-fit:contain; }
+  body[data-space="image"][data-image-fit="original"] #custom-background-image { width:auto; height:auto; max-width:100%; max-height:100%; object-fit:contain; left:50%; top:50%; right:auto; bottom:auto; transform:translate(-50%,-50%); }
+  body[data-space="image"] #space-bg { background:rgba(2,5,15,var(--image-dim, .28)); opacity:1; filter:none; }
+  body[data-space="image"] #space-bg::before, body[data-space="image"] #space-bg::after { display:none !important; }
+  /* Procedural WebGL nebula: real GPU-rendered fractal clouds, depth haze and stars. */
+  #cosmic-webgl { position:absolute; inset:0; width:100%; height:100%; z-index:0; display:none; pointer-events:none; background:#02030a; }
+  body[data-constellation][data-space="nebula3d"] #cosmic-webgl { display:block; }
+  body[data-constellation][data-space="nebula3d"] #space-bg { opacity:0 !important; animation:none !important; }
+  body[data-constellation][data-space="nebula3d"] #cosmic-webgl { opacity:1; }
+  body[data-space="nebula3d"] #album-cover-backdrop { display:none !important; }
+  #nebula-palette-setting { display:none; }
+  body[data-space="nebula3d"] #nebula-palette-setting { display:flex; }
+  /* Extruded-looking lyric lettering. The shadow colours are derived from the active
+     lyric palette, so the effect adds depth without replacing the selected text colours. */
+  body[data-lyric-depth="on"] .w { text-shadow: 0 1px 0 color-mix(in srgb,var(--lyric) 72%,#000), 0 2px 0 color-mix(in srgb,var(--lyric) 62%,#000), 0 3px 0 color-mix(in srgb,var(--lyric) 52%,#000), 0 5px 5px rgba(0,0,0,.48); }
+  body[data-lyric-depth="on"] .line.now .w { text-shadow: 0 1px 0 color-mix(in srgb,var(--hi) 68%,#000), 0 2px 0 color-mix(in srgb,var(--hi) 56%,#000), 0 3px 0 color-mix(in srgb,var(--lyric) 52%,#000), 0 5px 7px rgba(0,0,0,.52); }
+  body[data-lyric-depth="on"] .line.past .w { text-shadow: 0 1px 0 color-mix(in srgb,var(--secondary) 65%,#000), 0 2px 0 color-mix(in srgb,var(--secondary) 48%,#000), 0 4px 5px rgba(0,0,0,.42); }
+  #constellation, #lines, #note { z-index:1; }
   #constellation { display:none; position:absolute; inset:0; width:100%; height:100%; overflow:hidden; }
   #constellation-world { transform-box: view-box; transform-origin: 0 0; transition: transform 900ms cubic-bezier(.18,.72,.18,1); will-change: transform; }
-  body[data-constellation] #stage:after { content:""; position:absolute; inset:-12%; pointer-events:none; opacity:.45; background-image:radial-gradient(circle at 12% 28%,rgba(155,205,255,.65) 0 1px,transparent 1.8px),radial-gradient(circle at 76% 22%,rgba(255,220,170,.45) 0 1px,transparent 1.8px),radial-gradient(circle at 64% 78%,rgba(120,175,255,.55) 0 1px,transparent 1.8px),radial-gradient(circle at 32% 82%,rgba(190,210,255,.4) 0 1px,transparent 1.8px); background-size:240px 210px,310px 270px,280px 240px,360px 300px; animation:star-drift 42s linear infinite; }
+  body[data-constellation][data-space="stars"] #space-bg, body[data-constellation][data-space="galaxy"] #space-bg { opacity:1; animation:star-drift 42s linear infinite; }
+  body[data-constellation][data-space="stars"] #space-bg { background-image:radial-gradient(circle at 11% 24%,rgba(255,255,255,.96) 0 1.15px,transparent 1.9px),radial-gradient(circle at 68% 17%,rgba(186,224,255,.92) 0 1px,transparent 2px),radial-gradient(circle at 81% 72%,rgba(255,228,177,.9) 0 1.2px,transparent 2.3px),radial-gradient(circle at 28% 76%,rgba(174,211,255,.82) 0 .9px,transparent 1.8px),radial-gradient(circle at 48% 46%,rgba(255,255,255,.7) 0 .75px,transparent 1.5px); background-size:116px 103px,173px 149px,219px 191px,271px 233px,347px 307px; filter:drop-shadow(0 0 3px rgba(170,215,255,.62)); }
+  body[data-constellation][data-space="galaxy"] #space-bg { background-image:radial-gradient(ellipse at 19% 35%,rgba(78,84,208,.31),transparent 28%),radial-gradient(ellipse at 78% 66%,rgba(142,57,181,.27),transparent 30%),radial-gradient(ellipse at 54% 48%,rgba(24,116,190,.16),transparent 38%),radial-gradient(circle at 11% 24%,rgba(255,255,255,.94) 0 1.1px,transparent 1.9px),radial-gradient(circle at 68% 17%,rgba(186,224,255,.88) 0 1px,transparent 2px),radial-gradient(circle at 81% 72%,rgba(255,228,177,.86) 0 1.2px,transparent 2.3px),radial-gradient(circle at 28% 76%,rgba(174,211,255,.78) 0 .9px,transparent 1.8px); background-size:auto,auto,auto,116px 103px,173px 149px,219px 191px,271px 233px; filter:drop-shadow(0 0 3px rgba(170,215,255,.58)); }
+  /* Layered space depth: distant dust stays faint and slow; nearer stars are brighter,
+     larger, and drift slightly faster. The layers remain behind all lyric content. */
+  body[data-constellation]:not([data-space="image"]):not([data-space="album-art"]) #space-bg::before,
+  body[data-constellation]:not([data-space="image"]):not([data-space="album-art"]) #space-bg::after {
+    content:""; position:absolute; inset:-3%; pointer-events:none; background-repeat:repeat;
+    will-change:transform,opacity;
+  }
+  body[data-constellation]:not([data-space="image"]):not([data-space="album-art"]) #space-bg::before {
+    opacity:.52;
+    background-image:
+      radial-gradient(1px 1px at 17px 29px,rgba(205,222,255,.70) 98%,transparent),
+      radial-gradient(1px 1px at 81px 67px,rgba(255,255,255,.54) 98%,transparent),
+      radial-gradient(1.2px 1.2px at 143px 111px,rgba(168,198,255,.62) 98%,transparent),
+      radial-gradient(1px 1px at 211px 41px,rgba(255,255,255,.48) 98%,transparent);
+    background-size:257px 193px,311px 227px,367px 281px,421px 317px;
+    animation:far-star-drift 110s linear infinite;
+  }
+  body[data-constellation]:not([data-space="image"]):not([data-space="album-art"]) #space-bg::after {
+    opacity:.42;
+    background-image:
+      radial-gradient(1.7px 1.7px at 31px 53px,rgba(255,255,255,.92) 98%,transparent),
+      radial-gradient(2.5px 2.5px at 127px 91px,rgba(190,220,255,.90) 98%,transparent),
+      radial-gradient(1.5px 1.5px at 203px 157px,rgba(255,224,180,.82) 98%,transparent),
+      radial-gradient(ellipse 18px 18px at 127px 91px,rgba(130,175,255,.13),transparent 100%);
+    background-size:293px 239px,397px 307px,487px 359px,397px 307px;
+    animation:near-star-drift 58s ease-in-out infinite alternate, star-breathe 9s ease-in-out infinite;
+  }
+  body[data-constellation][data-space="off"] #space-bg {
+    opacity:1;
+    background:
+      radial-gradient(ellipse at 50% 52%,rgba(28,35,66,.38),transparent 60%),
+      linear-gradient(180deg,#050711,#020309 72%,#010205);
+  }
+  body[data-constellation][data-space="stars"] #space-bg { background-color:#030611; }
+  body[data-constellation][data-space="galaxy"] #space-bg { background-color:#02040d; }
+  @keyframes far-star-drift { from { transform:translate3d(0,0,0); } to { transform:translate3d(-18px,9px,0); } }
+  @keyframes near-star-drift { from { transform:translate3d(0,0,0) scale(1); } to { transform:translate3d(-34px,17px,0) scale(1.015); } }
+  @keyframes star-breathe { 0%,100% { opacity:.26; } 50% { opacity:.52; } }
+  @media (prefers-reduced-motion: reduce) {
+    body[data-constellation] #space-bg,
+    body[data-constellation] #space-bg::before,
+    body[data-constellation] #space-bg::after,
+    body[data-space="animated-universe"] #space-bg,
+    body[data-space="animated-universe"] #space-bg::before,
+    body[data-space="animated-universe"] #space-bg::after { animation:none !important; }
+  }
+  body[data-space="image"] #space-bg { opacity:1; }
+  /* Animated Universe: a continuously drifting, layered nebula and starfield. This is
+     CSS-rendered so it works offline and avoids a large looping video/GIF asset. */
+  body[data-space="animated-universe"] #space-bg {
+    opacity:1; overflow:hidden; background-color:#02040c;
+    background-image:radial-gradient(ellipse at 52% 52%,rgba(11,36,67,.38),transparent 58%),linear-gradient(180deg,#03050e 0%,#03040b 72%,#010207 100%);
+    filter:saturate(1.12);
+  }
+  body[data-space="animated-universe"] #space-bg::before,
+  body[data-space="animated-universe"] #space-bg::after {
+    content:""; position:absolute; inset:-12%; display:block; pointer-events:none; will-change:transform,background-position,opacity;
+  }
+  body[data-space="animated-universe"] #space-bg::before {
+    opacity:.92; background-repeat:no-repeat;
+    background-image:
+      radial-gradient(ellipse at 24% 36%,rgba(49,68,174,.25) 0%,rgba(34,50,133,.13) 20%,transparent 44%),
+      radial-gradient(ellipse at 72% 58%,rgba(130,43,154,.23) 0%,rgba(83,33,129,.12) 22%,transparent 46%),
+      radial-gradient(ellipse at 48% 72%,rgba(12,113,157,.19) 0%,rgba(12,75,127,.09) 25%,transparent 48%),
+      radial-gradient(ellipse at 54% 28%,rgba(90,43,139,.12) 0%,transparent 37%),
+      radial-gradient(ellipse at 50% 50%,rgba(10,20,50,.12),transparent 62%);
+    background-size:130% 135%,140% 145%,135% 140%,130% 125%,100% 100%;
+    animation:nebula-drift 72s ease-in-out infinite alternate,nebula-breathe 24s ease-in-out infinite;
+  }
+  body[data-space="animated-universe"] #space-bg::after {
+    opacity:.64; background-repeat:repeat;
+    background-image:
+      radial-gradient(1px 1px at 23px 37px,rgba(255,255,255,.92) 98%,transparent),
+      radial-gradient(1.4px 1.4px at 117px 81px,rgba(194,221,255,.9) 98%,transparent),
+      radial-gradient(1px 1px at 193px 147px,rgba(255,235,202,.82) 98%,transparent),
+      radial-gradient(2px 2px at 281px 53px,rgba(225,238,255,.82) 98%,transparent),
+      radial-gradient(1px 1px at 337px 201px,rgba(166,202,255,.76) 98%,transparent),
+      radial-gradient(ellipse 16px 16px at 281px 53px,rgba(112,169,255,.12),transparent 100%);
+    background-size:251px 197px,317px 241px,389px 283px,457px 331px,521px 367px,457px 331px;
+    animation:universe-star-drift 95s linear infinite,universe-star-twinkle 11s ease-in-out infinite;
+  }
+  @keyframes nebula-drift { 0% { transform:translate3d(-1.5%,-1%,0) scale(1); } 50% { transform:translate3d(1.2%,1.4%,0) scale(1.055); } 100% { transform:translate3d(-.6%,2%,0) scale(1.025); } }
+  @keyframes nebula-breathe { 0%,100% { filter:brightness(.88) saturate(.95); } 50% { filter:brightness(1.14) saturate(1.12); } }
+  @keyframes universe-star-drift { from { transform:translate3d(0,0,0); } to { transform:translate3d(-38px,24px,0); } }
+  @keyframes universe-star-twinkle { 0%,100% { opacity:.45; } 50% { opacity:.76; } }
+  /* Album-art mode: a palette-driven ambient gradient plus a separate, sharp, centered cover. */
+  body[data-space="album-art"][data-has-album-art="true"] #space-bg {
+    opacity:1; overflow:hidden;
+    background: radial-gradient(ellipse at 50% 48%, var(--album-glow, rgba(90,70,90,.38)) 0%, transparent 48%),
+                linear-gradient(125deg, var(--album-bg-a, #19191d), var(--album-bg-b, #09090c) 58%, var(--album-bg-c, #202026));
+  }
+  #album-cover-backdrop { display:none; position:absolute; z-index:0; left:50%; top:50%; transform:translate(-50%,-50%);
+    width:auto; height:auto; max-width:min(42vw, 58vh); max-height:72vh; object-fit:contain;
+    opacity:0; filter:saturate(.78) brightness(.78);
+    border-radius:12px; box-shadow:0 18px 54px rgba(0,0,0,.32); pointer-events:none;
+    transition:opacity .35s ease, filter .35s ease; }
+  body[data-space="album-art"][data-has-album-art="true"] #album-cover-backdrop { display:block; }
+  body[data-space="album-art"]:not([data-has-album-art="true"]) #space-bg { opacity:0; }
   @keyframes star-drift { from { transform:translate3d(0,0,0) rotate(0deg); } to { transform:translate3d(-28px,18px,0) rotate(1deg); } }
   body[data-constellation] #constellation { display:block; }
   body[data-constellation] #lines { display:none; }
@@ -35,9 +167,9 @@
   .constellation-star { fill:var(--lyric); opacity:.38; transition:opacity .25s, fill .25s, r .25s; }
   .constellation-star.past { fill:var(--past); opacity:.65; }
   .constellation-star.active { fill:var(--hi); opacity:1; filter:drop-shadow(0 0 7px var(--edge)); }
-  .constellation-label { fill:var(--lyric); font-size:calc(15px * var(--ui-scale)); font-weight:500; text-anchor:middle; dominant-baseline:central; transition:opacity .25s, fill .25s; pointer-events:none; }
+  .constellation-label { fill:var(--lyric); font-size:calc(22px * var(--ui-scale)); font-weight:550; text-anchor:middle; dominant-baseline:central; transition:opacity .25s, fill .25s; pointer-events:none; }
   .constellation-label.past { fill:var(--past); }
-  .constellation-label.active { fill:var(--hi); font-size:calc(30px * var(--ui-scale)); font-weight:750; filter:drop-shadow(0 0 10px var(--edge)); }
+  .constellation-label.active { fill:var(--hi); font-size:calc(44px * var(--ui-scale)); font-weight:800; filter:drop-shadow(0 0 13px var(--edge)); }
   .constellation-label.past { opacity:.36; }
   .constellation-star.active { r:7; }
   body[data-style^="constellation-"] .constellation-edge { transition:stroke .35s,opacity .55s; }
@@ -47,6 +179,9 @@
   body[data-style="constellation-hybrid"] .constellation-label.far { opacity:.12; }
   body[data-style="constellation-hybrid"] .constellation-star.far { opacity:.12; }
   body[data-style="constellation-orbit"] .constellation-star.active { stroke:rgba(100,190,255,.8); stroke-width:9; stroke-opacity:.25; }
+  /* Flow borrows Icons' word-to-emoji matching; the emoji appears only while its word is active. */
+  .constellation-icon { text-anchor:middle; dominant-baseline:central; font-size:28px; opacity:0; transform-box:fill-box; transform-origin:center; pointer-events:none; transition:opacity .2s, font-size .25s; }
+  .constellation-icon.active { opacity:1; font-size:38px; filter:drop-shadow(0 2px 8px rgba(0,0,0,.48)); }
   #lines { position: absolute; left: var(--pad); right: var(--pad); top: 0; }
 
   /* ---- shared building blocks ---- */
@@ -86,6 +221,39 @@
   body[data-style="hopper"] #hop.jump { animation: hopjump .26s ease-out; }
   @keyframes hopjump { 0% { margin-top: .04em; } 45% { margin-top: -.3em; } 100% { margin-top: .04em; } }
 
+  /* Stroke Lines: line-by-line outlined typography inspired by Three.js' text-stroke
+     example. The face still uses the app's lyric palette; only the outline/extrusion
+     is added, and is derived from --lyric / --hi rather than hard-coded colours. */
+  body[data-style="stroke-lines"] #lines { perspective:1200px; transform-style:preserve-3d; }
+  body[data-style="stroke-lines"] .line { left:4%; right:4%; text-align:center; transform-origin:center center;
+       font-size:clamp(30px, 5.2vw, 78px); line-height:1.28; letter-spacing:-.025em; }
+  body[data-style="stroke-lines"] .line.p1,
+  body[data-style="stroke-lines"] .line.p2,
+  body[data-style="stroke-lines"] .line.p3,
+  body[data-style="stroke-lines"] .line.f1,
+  body[data-style="stroke-lines"] .line.f2,
+  body[data-style="stroke-lines"] .line.f3 { opacity:0 !important; pointer-events:none; }
+  body[data-style="stroke-lines"] .line.now { opacity:1; transform:translateY(-50%) rotateX(-5deg) translateZ(0); filter:none; }
+  body[data-style="stroke-lines"] .line.now .w {
+       -webkit-text-stroke: .65px color-mix(in srgb, var(--lyric) 88%, transparent);
+       paint-order:stroke fill;
+       text-shadow: 0 1px 0 color-mix(in srgb,var(--lyric) 88%,#000),
+                    0 2px 0 color-mix(in srgb,var(--lyric) 76%,#000),
+                    0 3px 0 color-mix(in srgb,var(--lyric) 64%,#000),
+                    0 4px 0 color-mix(in srgb,var(--lyric) 50%,#000),
+                    0 8px 12px rgba(0,0,0,.5);
+  }
+  body[data-style="stroke-lines"] .line.now .wd.cur .w,
+  body[data-style="stroke-lines"] .line.now .wd.sung .w {
+       -webkit-text-stroke-color:color-mix(in srgb,var(--hi) 82%,transparent);
+       text-shadow: 0 1px 0 color-mix(in srgb,var(--hi) 78%,#000),
+                    0 2px 0 color-mix(in srgb,var(--hi) 62%,#000),
+                    0 3px 0 color-mix(in srgb,var(--lyric) 62%,#000),
+                    0 5px 0 color-mix(in srgb,var(--lyric) 48%,#000),
+                    0 9px 14px rgba(0,0,0,.52);
+  }
+  body[data-style="stroke-lines"] .line.now .wd { margin-right:.24em; }
+
   /* Icons: a matched emoji pops in above each word as it starts */
   body[data-style="icons"] .line { padding-top: .9em; }
   body[data-style="icons"] .ic { display: block; position: absolute; left: 50%; top: -.95em; font-size: .62em; line-height: 1;
@@ -105,9 +273,11 @@
   body[data-style="drift"] .wd.cur { transform: translateZ(50px) scale(1.1); }
 
   /* ---- chrome ---- */
-  #meta { position: absolute; left: var(--pad); bottom: 28px; right: 24px; font-size: calc(15px * var(--ui-scale));
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: .01em; }
+  #meta { position:absolute; right:24px; bottom:24px; max-width:min(58vw, 720px); display:flex; align-items:center; justify-content:flex-end; gap:12px; font-size:calc(15px * var(--ui-scale)); letter-spacing:.01em; }
+  #meta-copy { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; text-align:right; }
   #meta b { color: var(--hi); font-weight: 600; margin-right: .6em; }
+  #album-art { width:clamp(42px, 4vw, 62px); height:clamp(42px, 4vw, 62px); border-radius:12px; object-fit:cover; box-shadow:0 8px 25px rgba(0,0,0,.42); border:1px solid color-mix(in srgb, var(--hi) 36%, transparent); }
+  #album-art[hidden] { display:none; }
   #note { position: absolute; left: var(--pad); top: 50%; transform: translateY(-50%);
           font-size: calc(clamp(22px, 3vw, 40px) * var(--ui-scale)); font-weight: 600; color: var(--secondary); max-width: 18em; line-height: 1.25; }
   #note small { display: block; margin-top: .6em; font-size: calc(15px * var(--ui-scale)); font-weight: 400; opacity: .8; }
@@ -125,7 +295,7 @@
   #picker { position:absolute; z-index:29; top:66px; left:16px; width:min(360px, calc(100vw - 32px)); display:flex; flex-direction:column; gap:10px;
     padding:14px; border:1px solid rgba(160,190,245,.2); border-radius:16px; background:rgba(8,13,27,.92);
     box-shadow:0 18px 60px rgba(0,0,0,.42); backdrop-filter:blur(22px); opacity:0; visibility:hidden; transform:translateY(-6px) scale(.985);
-    transform-origin:top left; transition:opacity .16s ease,transform .16s ease,visibility .16s; }
+    transform-origin:top left; transition:opacity .16s ease,transform .16s ease,visibility .16s; max-height:calc(100vh - 82px); overflow-y:auto; overscroll-behavior:contain; scrollbar-color:rgba(150,195,255,.6) transparent; }
   #picker.open { opacity:1; visibility:visible; transform:translateY(0) scale(1); }
   #picker .panel-title { margin:0 0 2px; color:#e8f1ff; font-size:13px; font-weight:650; letter-spacing:.04em; }
   #picker .setting { display:flex; flex-direction:column; align-items:stretch; gap:5px; padding:8px 9px; border:1px solid rgba(255,255,255,.08); border-radius:10px; background:rgba(255,255,255,.035); }
@@ -143,18 +313,34 @@
 
   @media (prefers-reduced-motion: reduce) {
     #lines, .line, #hop, .wd, .ic, .constellation-edge, .constellation-star, .constellation-label, #constellation-world { transition: none !important; }
-    body[data-constellation] #stage:after { animation:none !important; }
+    #space-bg { animation:none !important; }
     #hop.jump { animation: none !important; }
   }
+
+  /* Swordsman: dedicated real-time Three.js scene. Background remains controlled by existing settings. */
+  #swordsman-canvas { display:none; position:absolute; inset:0; width:100%; height:100%; z-index:2; outline:none; }
+  body[data-style="swordsman"] #swordsman-canvas { display:block; }
+  body[data-style="swordsman"] #lines,
+  body[data-style="swordsman"] #constellation,
+  body[data-style="swordsman"] #note { display:none !important; }
+  body[data-style="swordsman"] #space-bg { opacity:1; }
+  body[data-style="swordsman"] #meta { z-index:4; }
+  body[data-style="swordsman"] #picker { z-index:30; }
+
 </style>
 </head>
 <body data-style="focus">
 <main id="stage" aria-live="off">
+  <canvas id="cosmic-webgl" aria-hidden="true"></canvas>
+  <img id="custom-background-image" alt="" aria-hidden="true">
+  <canvas id="swordsman-canvas" aria-label="Swordsman 3D lyrics scene"></canvas>
+  <div id="space-bg" aria-hidden="true"></div>
+<img id="album-cover-backdrop" alt="" aria-hidden="true">
   <svg id="constellation" aria-label="Word constellation lyrics" role="img" preserveAspectRatio="none"></svg>
   <div id="lines"></div>
   <div id="note" hidden></div>
 </main>
-<div id="meta"></div>
+<div id="meta"><div id="meta-copy"></div><img id="album-art" hidden alt="Album artwork"></div>
 <div id="toast" role="status"></div>
 <button id="settings-trigger" type="button" aria-label="Open display settings" aria-controls="picker" aria-expanded="false" title="Display settings">
   <svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9M13 4v6M7 14v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>
@@ -191,6 +377,43 @@
     </div>
     <p class="art-note" id="art-note">Match album art uses the active track’s local media thumbnail.</p>
   </div>
+  <label class="setting"><span class="setting-label">Constellation background</span><select id="space-background" aria-label="Constellation background">
+    <option value="off">Deep space</option>
+    <option value="stars">Bright starfield</option>
+    <option value="galaxy" selected>Galaxy</option>
+    <option value="nebula3d">3D Nebula (WebGL)</option>
+    <option value="animated-universe">Animated Universe</option>
+    <option value="image">My local image</option>
+    <option value="album-art">Current song / album art</option>
+  </select></label>
+  <label class="setting" id="nebula-palette-setting"><span class="setting-label">3D Nebula colour theme</span><select id="nebula-palette" aria-label="3D Nebula colour theme">
+    <option value="cosmic">Cosmic Classic</option>
+    <option value="aurora">Emerald Aurora</option>
+    <option value="crimson">Crimson Rift</option>
+    <option value="gold">Golden Hour</option>
+    <option value="arctic">Arctic Blue</option>
+    <option value="mono">Monochrome</option>
+  </select></label>
+  <label class="setting"><span class="setting-label">Lyric 3D depth</span><select id="lyric-depth" aria-label="Lyric 3D depth">
+    <option value="on">Enabled</option><option value="off">Disabled</option>
+  </select></label>
+  <div class="setting">
+    <span class="setting-label">Local background image</span>
+    <button id="choose-background" type="button">Choose image…</button>
+    <label class="setting-label" for="image-display-mode">Image display mode</label>
+    <select id="image-display-mode" aria-label="Image display mode">
+      <option value="fill">Fill screen (crop if needed)</option>
+      <option value="fit">Fit image (show the whole image)</option>
+      <option value="original">Original proportions (only scale down)</option>
+    </select>
+    <label class="setting-label" for="image-dimming">Background dimming <span id="image-dimming-value">28%</span></label>
+    <input id="image-dimming" type="range" min="0" max="70" step="1" value="28" aria-label="Background dimming">
+    <p class="art-note" id="background-note">Images are copied to Lyrical’s local app storage and stay on this PC. Choose how the image fits the window and adjust dimming for lyric readability.</p>
+  </div>
+  <label class="setting"><span class="setting-label">Window presentation</span><select id="presentation" aria-label="Window presentation">
+    <option value="windowed">Windowed</option>
+    <option value="fullscreen">Full screen</option>
+  </select></label>
 </div>
 <div id="hop" aria-hidden="true"></div>
 
@@ -210,8 +433,11 @@
     lens:   { label: 'Lens',   abs: true },               // convex lens falloff
     drift:  { label: 'Drift',  abs: true },               // 3D wall, slowly swaying
     icons:  { label: 'Icons',  abs: true, single: true }, // emoji pop in beside words
+    'stroke-lines': { label: '3D Stroke · Lines', abs: true, single: true }, // outlined 3D line-by-line lyrics
+    swordsman: { label: 'Swordsman · 3D Combat', abs: true, single: true }, // 3D dark-fantasy lyric combat scene
     'constellation-fixed': { label: 'Constellation · Fixed' },
     'constellation-evolving': { label: 'Constellation · Evolving' },
+    'constellation-flow': { label: 'Constellation · Flow' },
     'constellation-hybrid': { label: 'Constellation · Hybrid' },
     'constellation-nebula': { label: 'Constellation · Nebula' },
     'constellation-orbit': { label: 'Constellation · Orbit' }
@@ -286,6 +512,7 @@
     root.setProperty('--secondary', colours.secondary || colours.lyric);
     root.setProperty('--past', colours.past || colours.edge);
     Object.entries(colourInputs).forEach(([key, input]) => { if (colours[key]) input.value = colours[key]; });
+    if (hosted) window.chrome.webview.postMessage({ type:'setChromeColor', color:colours.bg });
   }
   function saveColours() {
     try {
@@ -329,17 +556,41 @@
       const ranked = [...buckets.entries()].sort((a, b) => b[1] - a[1]).map(([key]) => key.split(',').map(Number));
       const dominant = ranked[0] || [32, 52, 85];
       const accent = ranked.find(c => Math.max(...c) - Math.min(...c) > 48 && luminance(c) > .08) || dominant;
-      const background = mix(dominant, [0, 0, 0], .78);
+      const background = mix(dominant, [0, 0, 0], .82);
+      const accentDark = mix(accent, [0, 0, 0], .72);
+      const secondaryDark = mix(ranked[1] || dominant, [0, 0, 0], .84);
+      document.documentElement.style.setProperty('--album-bg-a', hex(background));
+      document.documentElement.style.setProperty('--album-bg-b', hex(mix(background, [0,0,0], .62)));
+      document.documentElement.style.setProperty('--album-bg-c', hex(secondaryDark));
+      document.documentElement.style.setProperty('--album-glow', hex(accentDark));
       const active = contrast([255, 255, 255], background) >= 4.5 ? [255, 255, 255] : [255, 244, 222];
       const colours = { bg:hex(background), hi:hex(active), lyric:hex(mix(accent, [255,255,255], .18)), edge:hex(mix(accent, [255,255,255], .42)), secondary:hex(mix(accent, [255,255,255], .32)), past:hex(mix(accent, [255,225,188], .35)) };
       setColourVariables(colours);
-      artNote.textContent = 'Matched to the current album art with a darkened background for lyric contrast.';
+      artNote.textContent = 'Matched to the current album art with a dark ambient gradient for lyric contrast.';
     };
     image.onerror = () => { artNote.textContent = 'Album art could not be read; Midnight Gold remains active.'; };
     image.src = dataUrl;
   }
   function setAlbumArt(dataUrl) {
     albumArtDataUrl = dataUrl || null;
+    const image = $('album-art');
+    image.hidden = !albumArtDataUrl;
+    if (albumArtDataUrl) {
+      image.src = albumArtDataUrl;
+      $('album-cover-backdrop').src = albumArtDataUrl;
+      document.documentElement.style.setProperty('--album-background', `url("${albumArtDataUrl}")`);
+    } else {
+      image.removeAttribute('src');
+      $('album-cover-backdrop').removeAttribute('src');
+      document.documentElement.style.setProperty('--album-background', 'none');
+    }
+    document.body.dataset.hasAlbumArt = String(!!albumArtDataUrl);
+    if (document.body.dataset.space === 'album-art') {
+      const note = $('background-note');
+      if (note) note.textContent = albumArtDataUrl
+        ? 'Showing the original artwork centered over a palette-matched ambient gradient.'
+        : 'No artwork is available for this track. The album-art background will appear when artwork is provided.';
+    }
     if (colourSchemePicker.value !== 'album') return;
     if (albumArtDataUrl) deriveAlbumColours(albumArtDataUrl);
     else {
@@ -358,6 +609,177 @@
   Object.values(colourInputs).forEach(input => input.addEventListener('input', () => {
     colourSchemePicker.value = 'custom'; applyScheme('custom', true); saveColours();
   }));
+
+  // Self-contained WebGL nebula renderer. It borrows the procedural-noise approach
+  // used by public Three.js galaxy/nebula demos, but has no CDN/runtime dependency.
+  const cosmicCanvas = $('cosmic-webgl');
+  (function initCosmicWebGL() {
+    if (!cosmicCanvas) return;
+    const gl = cosmicCanvas.getContext('webgl', { alpha:false, antialias:false, depth:false, stencil:false, powerPreference:'low-power' });
+    if (!gl) {
+      cosmicCanvas.style.background = 'radial-gradient(ellipse at 28% 38%,rgba(52,75,181,.46),transparent 35%),radial-gradient(ellipse at 72% 62%,rgba(133,43,170,.4),transparent 38%),radial-gradient(ellipse at 55% 25%,rgba(18,125,154,.2),transparent 42%),#02030a';
+      return;
+    }
+    const vertex = `attribute vec2 a_position; void main(){ gl_Position=vec4(a_position,0.0,1.0); }`;
+    const fragment = `
+      precision mediump float;
+      uniform vec2 u_resolution;
+      uniform float u_time;
+      uniform float u_motion;
+      uniform int u_palette;
+      float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123); }
+      float noise(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f); return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y); }
+      float fbm(vec2 p){ float v=0.0,a=.52; mat2 m=mat2(1.6,1.2,-1.2,1.6); for(int i=0;i<5;i++){ v+=a*noise(p); p=m*p+vec2(7.1,3.7); a*=.5; } return v; }
+      void main(){
+        vec2 uv=gl_FragCoord.xy/u_resolution.xy; vec2 p=(uv-.5)*vec2(u_resolution.x/u_resolution.y,1.0);
+        float t=u_time*u_motion;
+        vec2 flow=vec2(t*.018,-t*.011);
+        float warp=fbm(p*2.0+flow);
+        vec2 q=p*2.15+vec2(warp*1.7,-warp*1.25)+flow;
+        float clouds=fbm(q+fbm(q*1.7+vec2(4.2,-2.7))*.8);
+        float wisps=fbm(q*2.6+vec2(-t*.025,t*.017));
+        float density=smoothstep(.31,.82,clouds*.77+wisps*.34);
+        float tendrils=pow(max(0.0,fbm(q*3.7+vec2(wisps,-clouds))-.39),1.7)*1.9;
+        vec3 col=vec3(.004,.006,.018);
+        vec3 c1=vec3(.055,.10,.42), c2=vec3(.30,.055,.48), c3=vec3(.025,.28,.40), c4=vec3(.40,.075,.25);
+        if(u_palette==1){ c1=vec3(.015,.22,.15); c2=vec3(.08,.48,.30); c3=vec3(.10,.38,.48); c4=vec3(.34,.25,.08); }
+        else if(u_palette==2){ c1=vec3(.30,.015,.055); c2=vec3(.65,.035,.12); c3=vec3(.32,.045,.16); c4=vec3(.95,.22,.10); }
+        else if(u_palette==3){ c1=vec3(.34,.15,.025); c2=vec3(.70,.30,.035); c3=vec3(.48,.24,.07); c4=vec3(.85,.48,.16); }
+        else if(u_palette==4){ c1=vec3(.015,.10,.30); c2=vec3(.035,.32,.62); c3=vec3(.02,.42,.52); c4=vec3(.28,.42,.72); }
+        else if(u_palette==5){ c1=vec3(.12,.13,.16); c2=vec3(.38,.39,.42); c3=vec3(.22,.25,.28); c4=vec3(.55,.55,.57); }
+        vec3 neb=mix(c1,c2,smoothstep(.18,.78,clouds));
+        neb=mix(neb,c3,smoothstep(.52,.91,wisps)*.52);
+        neb=mix(neb,c4,smoothstep(.58,.92,fbm(q*1.15+vec2(2.3,8.1)))*.28);
+        col+=neb*(density*.92+tendrils*.72);
+        float core=exp(-dot(p-vec2(-.12,.08),p-vec2(-.12,.08))*5.0);
+        col+=c1*core*.42;
+        // Three independently scaled star fields provide a convincing depth cue.
+        for(int layer=0;layer<3;layer++){
+          float scale=layer==0?42.0:(layer==1?79.0:137.0);
+          vec2 sp=uv*scale+vec2(float(layer)*13.7,float(layer)*7.3);
+          sp+=vec2(t*(.012+float(layer)*.009),-t*(.007+float(layer)*.004));
+          vec2 cell=floor(sp), f=fract(sp)-.5;
+          float rnd=hash(cell+float(layer)*19.1);
+          float star=1.0-smoothstep(.012,.045,length(f));
+          star*=step(.984-float(layer)*.002,rnd);
+          float twinkle=.62+.38*sin(t*(.8+rnd*2.3)+rnd*28.0);
+          vec3 starcol=mix(vec3(.45,.61,1.0),vec3(1.0,.83,.68),hash(cell+4.7));
+          col+=starcol*star*twinkle*(.48+float(layer)*.28);
+        }
+        float vignette=1.0-smoothstep(.35,.93,length(p*vec2(.82,1.0)));
+        col*=.48+.52*vignette;
+        col=pow(max(col,vec3(0.0)),vec3(.88));
+        gl_FragColor=vec4(col,1.0);
+      }`;
+    function shader(type, source){ const sh=gl.createShader(type); gl.shaderSource(sh,source); gl.compileShader(sh); if(!gl.getShaderParameter(sh,gl.COMPILE_STATUS)){ console.warn('Lyrical WebGL shader:',gl.getShaderInfoLog(sh)); gl.deleteShader(sh); return null; } return sh; }
+    const vs=shader(gl.VERTEX_SHADER,vertex), fs=shader(gl.FRAGMENT_SHADER,fragment);
+    if(!vs||!fs){ cosmicCanvas.style.background='radial-gradient(ellipse at 28% 38%,rgba(52,75,181,.46),transparent 35%),radial-gradient(ellipse at 72% 62%,rgba(133,43,170,.4),transparent 38%),#02030a'; return; }
+    const program=gl.createProgram(); gl.attachShader(program,vs); gl.attachShader(program,fs); gl.linkProgram(program);
+    if(!gl.getProgramParameter(program,gl.LINK_STATUS)){ console.warn('Lyrical WebGL link:',gl.getProgramInfoLog(program)); return; }
+    gl.useProgram(program);
+    const buffer=gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER,buffer);
+    gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,-1,1,1,-1,1,1]),gl.STATIC_DRAW);
+    const pos=gl.getAttribLocation(program,'a_position'); gl.enableVertexAttribArray(pos); gl.vertexAttribPointer(pos,2,gl.FLOAT,false,0,0);
+    const resolution=gl.getUniformLocation(program,'u_resolution'), time=gl.getUniformLocation(program,'u_time'), motion=gl.getUniformLocation(program,'u_motion'), paletteUniform=gl.getUniformLocation(program,'u_palette');
+    const paletteSelect = document.getElementById('nebula-palette');
+    const paletteIds = { cosmic:0, aurora:1, crimson:2, gold:3, arctic:4, mono:5 };
+    function applyPalette(){ const selected=paletteSelect ? paletteSelect.value : 'cosmic'; gl.useProgram(program); gl.uniform1i(paletteUniform,paletteIds[selected] ?? 0); }
+    if(paletteSelect){ try { paletteSelect.value=localStorage.getItem('Lyrical.nebulaPalette') || 'cosmic'; } catch(_){} paletteSelect.addEventListener('change',()=>{try{localStorage.setItem('Lyrical.nebulaPalette',paletteSelect.value);}catch(_){} applyPalette();}); }
+    applyPalette();
+    let raf=0, start=performance.now(), width=0,height=0, lastFrame=0, visible=true;
+    const motionFactor=reduced?0:.8;
+    function resize(){ const dpr=Math.min(window.devicePixelRatio||1,1.35); const w=Math.max(1,Math.floor(cosmicCanvas.clientWidth*dpr)), h=Math.max(1,Math.floor(cosmicCanvas.clientHeight*dpr)); if(w!==width||h!==height){width=w;height=h;cosmicCanvas.width=w;cosmicCanvas.height=h;gl.viewport(0,0,w,h);gl.uniform2f(resolution,w,h);} }
+    function frame(now){ raf=0; if(!visible||document.hidden||document.body.dataset.space!=='nebula3d') return; if(now-lastFrame<32){raf=requestAnimationFrame(frame);return;} lastFrame=now; resize(); gl.uniform1f(time,(now-start)/1000); gl.uniform1f(motion,motionFactor); gl.drawArrays(gl.TRIANGLES,0,6); raf=requestAnimationFrame(frame); }
+    function sync(){ const active=document.body.dataset.space==='nebula3d'&&visible&&!document.hidden; if(active&&!raf){resize(); raf=requestAnimationFrame(frame);} else if(!active&&raf){cancelAnimationFrame(raf);raf=0;} }
+    document.addEventListener('visibilitychange',sync); window.addEventListener('resize',resize); window.addEventListener('webglcontextlost',e=>{e.preventDefault(); visible=false;},false); cosmicCanvas.addEventListener('webglcontextrestored',()=>{visible=true;sync();});
+    // The picker change event is registered below; observe the attribute so no
+    // external library or special event wiring is required.
+    new MutationObserver(sync).observe(document.body,{attributes:true,attributeFilter:['data-space']});
+    sync();
+  })();
+
+  const spaceBackgroundPicker = $('space-background');
+  const lyricDepthPicker = $('lyric-depth');
+  try { lyricDepthPicker.value = localStorage.getItem('Lyrical.lyricDepth') || 'on'; } catch (_) {}
+  document.body.dataset.lyricDepth = lyricDepthPicker.value;
+  lyricDepthPicker.addEventListener('change', () => { document.body.dataset.lyricDepth = lyricDepthPicker.value; try { localStorage.setItem('Lyrical.lyricDepth', lyricDepthPicker.value); } catch (_) {} });
+  const chooseBackgroundButton = $('choose-background'), backgroundNote = $('background-note');
+  const customBackgroundImage = $('custom-background-image');
+  const imageDisplayMode = $('image-display-mode');
+  const imageDimming = $('image-dimming'), imageDimmingValue = $('image-dimming-value');
+  let customBackgroundDataUrl = null;
+  function applyImageDisplaySettings() {
+    document.body.dataset.imageFit = imageDisplayMode.value;
+    const dim = Number(imageDimming.value) / 100;
+    document.documentElement.style.setProperty('--image-dim', String(dim));
+    imageDimmingValue.textContent = `${imageDimming.value}%`;
+    try {
+      localStorage.setItem('Lyrical.imageDisplayMode', imageDisplayMode.value);
+      localStorage.setItem('Lyrical.imageDimming', imageDimming.value);
+    } catch (_) {}
+  }
+  try {
+    const savedMode = localStorage.getItem('Lyrical.imageDisplayMode') || 'fill';
+    imageDisplayMode.value = ['fill','fit','original'].includes(savedMode) ? savedMode : 'fill';
+    const savedDimming = Number(localStorage.getItem('Lyrical.imageDimming'));
+    if (Number.isFinite(savedDimming) && localStorage.getItem('Lyrical.imageDimming') !== null) imageDimming.value = String(Math.max(0, Math.min(70, savedDimming)));
+  } catch (_) {}
+  applyImageDisplaySettings();
+  imageDisplayMode.addEventListener('change', applyImageDisplaySettings);
+  imageDimming.addEventListener('input', applyImageDisplaySettings);
+  function setCustomBackground(dataUrl) {
+    customBackgroundDataUrl = dataUrl || null;
+    if (customBackgroundDataUrl) customBackgroundImage.src = customBackgroundDataUrl;
+    else customBackgroundImage.removeAttribute('src');
+    document.documentElement.style.setProperty('--custom-background', 'none');
+    chooseBackgroundButton.textContent = customBackgroundDataUrl ? 'Replace image…' : 'Choose image…';
+    backgroundNote.textContent = customBackgroundDataUrl
+      ? 'Original image retained for display. Select Fill, Fit, or Original Proportions and adjust dimming below.'
+      : 'Images are copied to Lyrical’s local app storage and stay on this PC. Album art stays centered over a colour-matched gradient.';
+    if (customBackgroundDataUrl) spaceBackgroundPicker.value = 'image';
+    if (!customBackgroundDataUrl && spaceBackgroundPicker.value === 'image') spaceBackgroundPicker.value = 'galaxy';
+    document.body.dataset.space = spaceBackgroundPicker.value;
+    try { localStorage.setItem('Lyrical.spaceBackground', spaceBackgroundPicker.value); } catch (_) {}
+  }
+  function updateSpaceBackground() {
+    document.body.dataset.space = spaceBackgroundPicker.value;
+    if (spaceBackgroundPicker.value === 'album-art') {
+      backgroundNote.textContent = albumArtDataUrl
+        ? 'Showing the original artwork centered over a palette-matched ambient gradient.'
+        : 'No artwork is available for this track. The album-art background will appear when artwork is provided.';
+    } else if (spaceBackgroundPicker.value === 'nebula3d') {
+      backgroundNote.textContent = 'Procedural WebGL nebula. Choose from six colour themes below; your lyric colour scheme stays independent.';
+    } else if (spaceBackgroundPicker.value === 'image') {
+      backgroundNote.textContent = customBackgroundDataUrl
+        ? 'Original image retained for display. Select Fill, Fit, or Original Proportions and adjust dimming below.'
+        : 'Choose a local image to use as the background.';
+    } else {
+      backgroundNote.textContent = spaceBackgroundPicker.value === 'animated-universe'
+        ? 'A continuously drifting nebula and layered starfield. Animated locally; works offline.'
+        : 'Images are copied to Lyrical’s local app storage and stay on this PC. Album art stays centered over a colour-matched gradient.';
+    }
+    try { localStorage.setItem('Lyrical.spaceBackground', spaceBackgroundPicker.value); } catch (_) {}
+  }
+  try { spaceBackgroundPicker.value = localStorage.getItem('Lyrical.spaceBackground') || 'galaxy'; } catch (_) {}
+  if (![...spaceBackgroundPicker.options].some(o => o.value === spaceBackgroundPicker.value)) spaceBackgroundPicker.value = 'galaxy';
+  updateSpaceBackground();
+  spaceBackgroundPicker.addEventListener('change', updateSpaceBackground);
+  chooseBackgroundButton.addEventListener('click', () => {
+    if (hosted) window.chrome.webview.postMessage({ type:'chooseBackgroundImage' });
+    else backgroundNote.textContent = 'Choose-image support is available in the Windows app.';
+  });
+
+  const presentationPicker = $('presentation');
+  let presentation = 'windowed';
+  try { presentation = localStorage.getItem('Lyrical.presentation') || 'windowed'; } catch (_) {}
+  presentationPicker.value = presentation;
+  function setPresentation(value, notifyHost) {
+    presentation = value === 'fullscreen' ? 'fullscreen' : 'windowed';
+    presentationPicker.value = presentation;
+    try { localStorage.setItem('Lyrical.presentation', presentation); } catch (_) {}
+    if (notifyHost && hosted) window.chrome.webview.postMessage({ type:'setPresentation', presentation });
+  }
+  presentationPicker.addEventListener('change', () => setPresentation(presentationPicker.value, true));
 
   // ---------- text and notes ----------
   // A few media apps expose UTF-8 metadata after it has been decoded as
@@ -404,7 +826,7 @@
     if (sub) { const s = document.createElement('small'); s.textContent = sub; n.appendChild(s); }
   }
   function setMeta(t) {
-    const m = $('meta'); m.textContent = '';
+    const m = $('meta-copy'); m.textContent = '';
     if (!t || !t.title) return;
     const clean = cleanTrackLabel(t.title, t.artist);
     const b = document.createElement('b'); b.textContent = clean.title; m.appendChild(b);
@@ -442,10 +864,10 @@
     if (text != null) el.textContent = text;
     return el;
   }
-  function constellationPositions(count, mode, width, height) {
+  function constellationPositions(count, mode, width, height, words = []) {
     const pts = []; const marginX = Math.min(90, width * .09), marginY = Math.min(80, height * .13);
+    if (mode === 'constellation-flow') return flowConstellationPositions(words, width, height, marginX, marginY);
     for (let i=0;i<count;i++) {
-      const t = count <= 1 ? .5 : i/(count-1);
       let x, y;
       if (mode === 'constellation-fixed') {
         const cols = Math.max(4, Math.ceil(Math.sqrt(count * width / height)));
@@ -455,7 +877,7 @@
         x = marginX + (cols <= 1 ? .5 : col/(cols-1))*(width-2*marginX);
         y = marginY + (rows <= 1 ? .5 : row/(rows-1))*(height-2*marginY) + (seeded(i)-.5)*Math.min(22,height/Math.max(rows,1)*.25);
       } else if (mode === 'constellation-evolving') {
-        // Stable seeded field, revealed in sequence; nearby points form local clusters.
+        // Existing Evolving layout is intentionally preserved.
         const band = Math.floor(i/7), within = i%7;
         x = marginX + ((band*0.31 + within*0.105 + seeded(i)*.055) % 1)*(width-2*marginX);
         y = marginY + seeded(i+23)*(height-2*marginY);
@@ -472,6 +894,110 @@
     }
     return pts;
   }
+
+  // Flow uses lyric timing to set a preferred distance between adjacent words.
+  // Placement is computed once per layout; camera movement remains independent.
+  function flowConstellationPositions(words, width, height, marginX, marginY) {
+    const pts = [];
+    if (!words.length) return pts;
+    const scale = Math.max(1, Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1);
+    const minX = Math.max(30, marginX * .55), maxX = width - minX;
+    const minY = Math.max(58, marginY * .7), maxY = height - minY;
+    const minDistance = 42 * scale, maxDistance = Math.min(190 * scale, Math.max(105, Math.min(width, height) * .22));
+    const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    const durationOf = w => Math.max(0, Number(w.endMs) - Number(w.startMs)) || 180;
+    const intervalOf = (a, b) => Math.max(0, Number(b.startMs) - Number(a.startMs)) || durationOf(a);
+    const normTime = ms => Math.log1p(Math.min(2400, Math.max(0, ms)) / 180) / Math.log1p(2400 / 180);
+    const labelSize = w => ({
+      // Account for the enlarged active word so a label remains readable when it gains focus.
+      width: Math.max(32, String(w.text || '').length * 25.5 * scale + 16),
+      height: 62 * scale,
+      labelY: w.index % 2 ? 27 * scale : -25 * scale
+    });
+    const overlaps = (p, i, q, j) => {
+      const a = labelSize(words[i]), b = labelSize(words[j]);
+      const dx = Math.abs(p.x - q.x), dy = Math.abs((p.y + a.labelY) - (q.y + b.labelY));
+      return dx < (a.width + b.width) * .5 + 10 * scale && dy < (a.height + b.height) * .5 + 7 * scale;
+    };
+    const scoreCandidate = (p, i, target, previousAngle) => {
+      let score = 0;
+      const prev = pts[i - 1];
+      const actual = Math.hypot(p.x - prev.x, p.y - prev.y);
+      score += Math.abs(actual - target) * 1.15;
+      // Keep the path flowing rather than making abrupt reversals, but don't force a straight line.
+      if (previousAngle !== null) {
+        const angle = Math.atan2(p.y - prev.y, p.x - prev.x);
+        const delta = Math.abs(Math.atan2(Math.sin(angle - previousAngle), Math.cos(angle - previousAngle)));
+        score += delta * 8 * scale;
+      }
+      for (let j = 0; j < pts.length; j++) {
+        if (overlaps(p, i, pts[j], j)) return Infinity;
+        if (j < i - 1) {
+          const d = Math.hypot(p.x - pts[j].x, p.y - pts[j].y);
+          // Mild repulsion from non-adjacent words preserves open space without breaking compact runs.
+          if (d < 58 * scale) score += (58 * scale - d) * .24;
+        }
+      }
+      // Favor the interior slightly so later words retain room to be placed.
+      const cx = width * .5, cy = height * .5;
+      score += Math.hypot(p.x - cx, p.y - cy) * .018;
+      return score;
+    };
+    const first = words[0];
+    pts.push({ x: width * (.28 + seeded(301) * .44), y: height * (.28 + seeded(302) * .44) });
+    let previousAngle = null;
+    for (let i = 1; i < words.length; i++) {
+      const current = words[i - 1], next = words[i], prev = pts[i - 1];
+      const durationSignal = normTime(durationOf(current));
+      const intervalSignal = normTime(intervalOf(current, next));
+      // Both word hold-time and start-to-start interval matter; duration leads, interval refines it.
+      const timingSignal = clamp(durationSignal * .62 + intervalSignal * .38, 0, 1);
+      const target = minDistance + (maxDistance - minDistance) * Math.pow(timingSignal, .82);
+      const candidates = [];
+      const baseAngle = previousAngle === null ? seeded(i + 410) * Math.PI * 2 : previousAngle;
+      const radii = [1, .88, 1.14, 1.32, .72, 1.55, 1.8].map(mult => clamp(target * mult, minDistance * .78, maxDistance * 1.65));
+      for (let r = 0; r < radii.length; r++) {
+        for (let a = 0; a < 24; a++) {
+          const angle = baseAngle + (a / 24) * Math.PI * 2 + (seeded(i * 31 + r * 7 + a) - .5) * .12;
+          const radius = radii[r];
+          const x = prev.x + Math.cos(angle) * radius;
+          const y = prev.y + Math.sin(angle) * radius;
+          if (x < minX || x > maxX || y < minY || y > maxY) continue;
+          const p = { x, y };
+          const score = scoreCandidate(p, i, target, previousAngle);
+          if (Number.isFinite(score)) candidates.push({ p, score });
+        }
+      }
+      if (!candidates.length) {
+        // If the local neighborhood is crowded, search stable seeded positions across the stage.
+        for (let c = 0; c < 180; c++) {
+          const p = { x: minX + seeded(i * 997 + c * 2) * (maxX - minX), y: minY + seeded(i * 991 + c * 2 + 1) * (maxY - minY) };
+          const score = scoreCandidate(p, i, target, previousAngle);
+          if (Number.isFinite(score)) candidates.push({ p, score: score + Math.abs(Math.hypot(p.x-prev.x,p.y-prev.y)-target) * .7 });
+        }
+      }
+      let chosen;
+      if (candidates.length) {
+        candidates.sort((a,b) => a.score - b.score);
+        // Choose among the best few deterministically so the path doesn't look mechanically optimized.
+        const pool = candidates.slice(0, Math.min(5, candidates.length));
+        chosen = pool[Math.floor(seeded(i + 1703) * pool.length)].p;
+      } else {
+        // Dense fallback: preserve valid stage bounds and minimize, rather than guarantee, overlap.
+        let best = null, bestScore = Infinity;
+        for (let c = 0; c < 240; c++) {
+          const p = { x: minX + seeded(i * 1877 + c * 2) * (maxX - minX), y: minY + seeded(i * 1889 + c * 2 + 1) * (maxY - minY) };
+          let score = Math.abs(Math.hypot(p.x-prev.x,p.y-prev.y)-target);
+          for (let j=0;j<pts.length;j++) if (overlaps(p,i,pts[j],j)) score += 100000;
+          if (score < bestScore) { bestScore = score; best = p; }
+        }
+        chosen = best;
+      }
+      pts.push(chosen);
+      previousAngle = Math.atan2(chosen.y - prev.y, chosen.x - prev.x);
+    }
+    return pts;
+  }
   function buildConstellation() {
     svg.textContent=''; state.stars=[]; state.edges=[]; constellationWorld = null; constellationPoints = [];
     if (!isConstellation(state.style) || !state.els.length) return;
@@ -483,11 +1009,13 @@
     svg.appendChild(constellationWorld);
     const words=[];
     state.els.forEach((line, li) => line.wds.forEach((wd, wi) => {
-      words.push({text:line.ws[wi].textContent, line:li, word:wi});
+      const timing = state.doc && state.doc.lines[li] && state.doc.lines[li].words[wi] ? state.doc.lines[li].words[wi] : {};
+      words.push({text:line.ws[wi].textContent, line:li, word:wi, startMs:Number(timing.startMs) || 0, endMs:Number(timing.endMs) || 0, index:words.length});
     }));
-    const mode = state.style === 'constellation-evolving' ? state.style : state.style === 'constellation-fixed' ? state.style : 'constellation-hybrid';
-    const pts=constellationPositions(words.length, mode, width, height);
+    const mode = ['constellation-evolving', 'constellation-flow'].includes(state.style) ? state.style : state.style === 'constellation-fixed' ? state.style : 'constellation-hybrid';
+    const pts=constellationPositions(words.length, mode, width, height, words);
     constellationPoints = pts;
+    const labelScale = Math.max(1, Number(getComputedStyle(document.documentElement).getPropertyValue('--ui-scale')) || 1);
     words.forEach((w,i)=>{
       if(i>0) {
         const a=pts[i-1], b=pts[i];
@@ -496,9 +1024,12 @@
       }
       const g=svgEl('g',{'data-index':i});
       const star=svgEl('circle',{cx:pts[i].x,cy:pts[i].y,r: i%5===0?3.2:2.5,class:'constellation-star'});
-      const label=svgEl('text',{x:pts[i].x,y:pts[i].y+(i%2?20:-18),class:'constellation-label'},w.text);
-      g.appendChild(star); g.appendChild(label); constellationWorld.appendChild(g);
-      state.stars.push({star,label,line:w.line,word:w.word,index:i});
+      const labelY = pts[i].y + (i%2?27:-25)*labelScale;
+      const label=svgEl('text',{x:pts[i].x,y:labelY,class:'constellation-label'},w.text);
+      const matchedIcon = I && typeof I.iconFor === 'function' ? I.iconFor(w.text) : null;
+      const icon = matchedIcon ? svgEl('text',{x:pts[i].x,y:labelY-35*labelScale,class:'constellation-icon','aria-hidden':'true'},matchedIcon) : null;
+      g.appendChild(star); if (icon) g.appendChild(icon); g.appendChild(label); constellationWorld.appendChild(g);
+      state.stars.push({star,label,icon,line:w.line,word:w.word,index:i});
     });
     updateConstellation(state.activeGlobal);
   }
@@ -519,7 +1050,9 @@
       s.star.setAttribute('class','constellation-star'+(past?' past':current?' active':' future'));
       s.star.setAttribute('r',current?7:past?2.6:2.2);
       s.label.setAttribute('class','constellation-label'+(past?' past':current?' active':' future')+((state.style==='constellation-hybrid' && distance>12)?' far':''));
+      if (s.icon) s.icon.setAttribute('class','constellation-icon'+(current && state.style==='constellation-flow'?' active':''));
       s.label.style.display = outsideWindow && wordWindow !== 'fade' ? 'none' : '';
+      if (s.icon) s.icon.style.display = outsideWindow && wordWindow !== 'fade' ? 'none' : '';
       s.star.style.display = outsideWindow && wordWindow !== 'fade' ? 'none' : '';
       let opacity;
       if (current) opacity = 1;
@@ -545,7 +1078,8 @@
 
   // ---------- building the lines ----------
   function showDoc(doc) {
-    state.doc = doc; state.active = -2; state.lastWord = -2; state.lastP = {};
+    state.doc = doc;
+    window.__lyricalSwordsmanDoc = doc; state.active = -2; state.lastWord = -2; state.lastP = {};
     if (hop.parentNode) hop.parentNode.removeChild(hop);
     L.textContent = ''; state.els = []; state.ord = [];
     svg.textContent = ''; state.stars = []; state.edges = []; state.activeGlobal = -1;
@@ -665,6 +1199,7 @@
   function paint(now) {
     if (state.doc && state.els.length) {
       const pos = state.clock.positionAt(now) + state.offset;
+      window.__lyricalSwordsmanPosition = pos;
       const loc = E.locate(state.doc, pos);
       if (loc.line !== state.active) setActive(loc.line);
       if (loc.line >= 0) {
@@ -727,7 +1262,7 @@
     else if ((e.key === 's' || e.key === 'S') && !e.ctrlKey && !e.metaKey) {
       const names = Object.keys(STYLES); applyStyle(names[(names.indexOf(state.style) + 1) % names.length]);
     }
-    else if (hosted && e.key === 'F11') { e.preventDefault(); window.chrome.webview.postMessage({ type: 'toggleFullscreen' }); }
+    else if (hosted && e.key === 'F11') { e.preventDefault(); setPresentation(presentation === 'fullscreen' ? 'windowed' : 'fullscreen', true); }
     else if (hosted && e.ctrlKey && e.key.toLowerCase() === 't') { e.preventDefault(); window.chrome.webview.postMessage({ type: 'togglePin' }); toast('Pin on top toggled'); }
   });
 
@@ -743,7 +1278,7 @@
     } else if (m.type === 'clock') {
       state.clock.anchor(m.positionMs, !!m.playing, performance.now(), m.rate || 1);
     } else if (m.type === 'idle') {
-      setMeta(null); showDoc(null); setNote('Nothing playing.', 'Start a song in Spotify or Apple Music.');
+      setMeta(null); setAlbumArt(null); showDoc(null); setNote('Nothing playing.', 'Start a song in Spotify or Apple Music.');
     } else if (m.type === 'theme') {
       const r = document.documentElement.style;
       if (m.background) r.setProperty('--bg', m.background);
@@ -751,6 +1286,8 @@
       if (m.highlight) r.setProperty('--hi', m.highlight);
       if (m.secondary) r.setProperty('--secondary', m.secondary);
       if (m.edge) r.setProperty('--edge', m.edge);
+    } else if (m.type === 'backgroundImage') {
+      setCustomBackground(m.dataUrl);
     }
   }
 
@@ -762,6 +1299,8 @@
     window.chrome.webview.addEventListener('message', e => handle(e.data));
     handle({ type: 'idle' });
     window.chrome.webview.postMessage({ type: 'ready' });
+    window.chrome.webview.postMessage({ type: 'requestBackgroundImage' });
+    setPresentation(presentation, true);
   } else {
     // Demo for opening index.html in a browser: original sample lyrics, looping.
     const lrc = [
@@ -793,5 +1332,181 @@
   requestAnimationFrame(paint);
 })();
 </script>
+
+<script type="module">
+/* Lyrical Swordsman prototype — Phase 1 scene foundation + timestamp-driven word queue/strike proof. */
+(async () => {
+  const canvas = document.getElementById('swordsman-canvas');
+  if (!canvas) return;
+  let THREE, FontLoader, TextGeometry;
+  try {
+    THREE = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/build/three.module.js');
+    ({ FontLoader } = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/loaders/FontLoader.js'));
+    ({ TextGeometry } = await import('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/jsm/geometries/TextGeometry.js'));
+  } catch (error) {
+    console.error('Lyrical Swordsman: Three.js could not load.', error);
+    window.__lyricalSwordsmanError = 'Could not load the 3D engine. Check internet access for the first launch.';
+    canvas.dataset.error = '3D engine failed to load — check internet access and WebView2 DevTools console.';
+    return;
+  }
+
+  const scene = new THREE.Scene();
+  scene.background = null;
+  const camera = new THREE.PerspectiveCamera(37, 1, 0.1, 100);
+  camera.position.set(0.05, 2.2, 12.8);
+  camera.lookAt(0.15, 1.35, 0);
+  const renderer = new THREE.WebGLRenderer({ canvas, alpha:true, antialias:true, powerPreference:'high-performance' });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.25;
+
+  scene.add(new THREE.HemisphereLight(0x9eb9ff, 0x17101b, 2.0));
+  const key = new THREE.DirectionalLight(0xffd6a0, 3.4); key.position.set(-3, 7, 6); scene.add(key);
+  const rim = new THREE.PointLight(0x5d9fff, 32, 18); rim.position.set(-3, 2.8, -3); scene.add(rim);
+  const impactLight = new THREE.PointLight(0xffb45e, 0, 7); impactLight.position.set(1.1, 1.7, 1.2); scene.add(impactLight);
+
+  const mat = (color, metalness=0.25, roughness=0.42, emissive=0x000000, emissiveIntensity=0) => new THREE.MeshStandardMaterial({color, metalness, roughness, emissive, emissiveIntensity});
+  const armor = mat(0x252b39, .82, .28), armorLight = mat(0x596274, .8, .26), dark = mat(0x10131c, .45, .5), leather = mat(0x39231e, .1, .8), gold = mat(0x9c7440, .72, .28), bladeMat = mat(0xd5e4f7, .92, .19, 0x294a77, .35);
+  const char = new THREE.Group(); char.position.set(-2.15, 0, 0); scene.add(char);
+  const addMesh=(parent,geo,material,pos,rot)=>{const m=new THREE.Mesh(geo,material);m.position.set(...pos);if(rot)m.rotation.set(...rot);parent.add(m);return m;};
+  const box=(parent,size,material,pos,rot)=>addMesh(parent,new THREE.BoxGeometry(...size),material,pos,rot);
+  const sphere=(parent,r,material,pos,scale=[1,1,1])=>{const m=addMesh(parent,new THREE.SphereGeometry(r,16,12),material,pos);m.scale.set(...scale);return m;};
+  // Original low-poly placeholder knight assembled from meshes; this is a rig-ready visual blockout, not a final sourced character.
+  box(char,[.72,.92,.42],armor,[0,1.48,0]);
+  box(char,[.8,.13,.48],gold,[0,1.86,0]);
+  sphere(char,.28,armorLight,[0,2.16,0],[.86,1.08,.82]);
+  box(char,[.46,.16,.48],dark,[0,2.05,.08]);
+  // Face slit and crown ridges
+  box(char,[.31,.045,.025],mat(0xffb75f,.2,.25,0xff8b28,1.5),[0,2.14,.245]);
+  const helmRidge=addMesh(char,new THREE.ConeGeometry(.09,.46,5),gold,[0,2.49,0],[0,0,0]);
+  box(char,[.95,.18,.54],armorLight,[0,1.87,0]);
+  // Arms and articulated-looking gauntlets
+  const leftArm=new THREE.Group(); leftArm.position.set(-.48,1.78,0); char.add(leftArm);
+  box(leftArm,[.25,.65,.28],armor,[-.02,-.28,0],[0,0,-.23]); sphere(leftArm,.17,armorLight,[-.1,-.62,.02]);
+  const rightArm=new THREE.Group(); rightArm.position.set(.48,1.78,0); char.add(rightArm);
+  box(rightArm,[.26,.62,.28],armor,[.03,-.27,0],[0,0,.35]); sphere(rightArm,.16,armorLight,[.17,-.58,.04]);
+  // Waist, legs, boots
+  box(char,[.56,.25,.4],leather,[0,1.03,0]);
+  const leftLeg=new THREE.Group();leftLeg.position.set(-.22,.98,0);char.add(leftLeg);box(leftLeg,[.29,.72,.33],armor,[0,-.35,0]);box(leftLeg,[.36,.2,.48],dark,[0,-.72,.06]);
+  const rightLeg=new THREE.Group();rightLeg.position.set(.22,.98,0);char.add(rightLeg);box(rightLeg,[.29,.72,.33],armor,[0,-.35,0]);box(rightLeg,[.36,.2,.48],dark,[0,-.72,.06]);
+  // Cape as a tapered, dark cloth panel
+  const capeGeo=new THREE.BufferGeometry(); capeGeo.setAttribute('position',new THREE.Float32BufferAttribute([-.35,1.95,-.24,.35,1.95,-.24,-.48,.45,-.34,.48,.45,-.34],3));capeGeo.setIndex([0,2,1,1,2,3]);capeGeo.computeVertexNormals();
+  const cape=new THREE.Mesh(capeGeo,new THREE.MeshStandardMaterial({color:0x251d2b,side:THREE.DoubleSide,roughness:.92}));char.add(cape);
+  // Sword pivot: arm + hilt + blade, swept across a stable impact lane.
+  const swordPivot=new THREE.Group(); swordPivot.position.set(.52,1.42,.08); char.add(swordPivot);
+  box(swordPivot,[.1,.42,.1],leather,[.03,-.02,0],[0,0,-.2]);
+  box(swordPivot,[.42,.075,.12],gold,[.02,.18,0],[0,0,-.2]);
+  const blade=addMesh(swordPivot,new THREE.BoxGeometry(.13,1.38,.055),bladeMat,[.1,.9,0],[0,0,-.13]);
+  const bladeTip=addMesh(swordPivot,new THREE.ConeGeometry(.092,.22,4),bladeMat,[.19,1.68,0],[0,0,-.13]);
+  swordPivot.rotation.z=-.85;
+
+  // Low-profile floor guide and a few depth markers help establish space without committing to the final background.
+  const floorMat=new THREE.MeshBasicMaterial({color:0x6d8cb8,transparent:true,opacity:.14});
+  for(let i=0;i<7;i++){const ring=new THREE.Mesh(new THREE.TorusGeometry(1.15+i*.23,.006,4,96),floorMat);ring.rotation.x=Math.PI/2;ring.position.set(.6,.02,-.5);ring.scale.set(1.25,.55,1);scene.add(ring);}
+
+  let font=null;
+  try { font = await new FontLoader().loadAsync('https://cdn.jsdelivr.net/npm/three@0.180.0/examples/fonts/helvetiker_bold.typeface.json'); }
+  catch (error) { console.warn('Swordsman font unavailable; using fallback word sprites.', error); }
+  const wordRoot=new THREE.Group();scene.add(wordRoot);
+  const wordMeshes=[]; const wordMaterial=mat(0xffe0a0,.35,.24,0x8b4b14,.9);
+  const fallbackCanvas=document.createElement('canvas');fallbackCanvas.width=1024;fallbackCanvas.height=256;
+  const fctx=fallbackCanvas.getContext('2d');
+  function makeWordMesh(text){
+    let mesh;
+    if(font){
+      const geometry=new TextGeometry(text||' ',{font,size:.38,depth:.09,curveSegments:5,bevelEnabled:true,bevelThickness:.012,bevelSize:.009,bevelSegments:2});geometry.computeBoundingBox();geometry.center();
+      mesh=new THREE.Mesh(geometry,wordMaterial.clone());
+    } else {
+      fctx.clearRect(0,0,1024,256);fctx.font='bold 128px Arial';fctx.textAlign='center';fctx.textBaseline='middle';fctx.fillStyle='#ffe0a0';fctx.shadowColor='#ff9d42';fctx.shadowBlur=18;fctx.fillText(text||' ',512,128);
+      const texture=new THREE.CanvasTexture(fallbackCanvas);texture.colorSpace=THREE.SRGBColorSpace;
+      mesh=new THREE.Mesh(new THREE.PlaneGeometry(Math.max(1,text.length*.24),.48),new THREE.MeshBasicMaterial({map:texture,transparent:true,side:THREE.DoubleSide}));
+    }
+    mesh.userData.lyricText=text;return mesh;
+  }
+  const fragments=[]; const shardMat=mat(0xffbc62,.4,.28,0xff661c,1.4);
+  function burstWord(word, time){
+    if(!word || word.userData.burstAt===time)return;
+    word.userData.burstAt=time;
+    const bounds=new THREE.Box3().setFromObject(word);const center=bounds.getCenter(new THREE.Vector3());
+    for(let i=0;i<32;i++){
+      const g=new THREE.TetrahedronGeometry(.035+Math.random()*.065,0);const m=new THREE.Mesh(g,shardMat.clone());m.position.copy(center);m.position.x+=(Math.random()-.5)*Math.max(.5,bounds.max.x-bounds.min.x);m.position.y+=(Math.random()-.5)*.42;m.position.z+=(Math.random()-.5)*.3;scene.add(m);
+      m.userData.vel=new THREE.Vector3((Math.random()-.5)*3.2,Math.random()*2.5-.2,(Math.random()-.5)*2.8);m.userData.spin=new THREE.Vector3(Math.random()*7,Math.random()*7,Math.random()*7);m.userData.born=performance.now();fragments.push(m);
+    }
+    word.visible=false;impactLight.intensity=22;
+  }
+  const flatWords=[];let lastDoc=null,lastActive=-1,lastImpactToken=-1,lastPosition=0;
+  function rebuildWords(doc){
+    flatWords.length=0;
+    if(doc?.lines)doc.lines.forEach((line,lineIndex)=>line.words.forEach((w,wordIndex)=>flatWords.push({text:String(w.text||''),startMs:Number(w.startMs)||0,endMs:Number(w.endMs)||((Number(w.startMs)||0)+240),lineIndex,wordIndex})));
+    wordMeshes.forEach(m=>{wordRoot.remove(m);m.geometry?.dispose();if(m.material?.map)m.material.map.dispose();m.material?.dispose();});wordMeshes.length=0;
+    for(let i=0;i<5;i++){const m=makeWordMesh('');wordRoot.add(m);wordMeshes.push(m);}
+    lastActive=-1;lastImpactToken=-1;
+  }
+  function findActive(ms){let lo=0,hi=flatWords.length-1;if(!flatWords.length||ms<flatWords[0].startMs)return -1;while(lo<hi){const mid=(lo+hi+1)>>1;if(flatWords[mid].startMs<=ms)lo=mid;else hi=mid-1;}return lo;}
+  function replaceMesh(index,text){const old=wordMeshes[index];wordRoot.remove(old);old.geometry?.dispose();if(old.material?.map)old.material.map.dispose();old.material?.dispose();const m=makeWordMesh(text);wordRoot.add(m);wordMeshes[index]=m;return m;}
+
+  let enabled=false, mouseX=0,mouseY=0, targetMouseX=0,targetMouseY=0;
+  canvas.addEventListener('pointermove',e=>{const r=canvas.getBoundingClientRect();targetMouseX=((e.clientX-r.left)/Math.max(1,r.width)-.5);targetMouseY=((e.clientY-r.top)/Math.max(1,r.height)-.5);});
+  canvas.addEventListener('pointerleave',()=>{targetMouseX=0;targetMouseY=0;});
+  function resize(){const w=Math.max(1,canvas.clientWidth),h=Math.max(1,canvas.clientHeight);renderer.setSize(w,h,false);camera.aspect=w/h;camera.position.z=w/h<1.2?15.2:12.8;camera.updateProjectionMatrix();}
+  const ro=new ResizeObserver(resize);ro.observe(canvas);resize();
+  function animate(now){requestAnimationFrame(animate);const styleOn=document.body.dataset.style==='swordsman';if(!styleOn){enabled=false;return;}enabled=true;
+    if(window.__lyricalSwordsmanDoc!==lastDoc){lastDoc=window.__lyricalSwordsmanDoc;rebuildWords(lastDoc);}
+    const ms=Number(window.__lyricalSwordsmanPosition)||0;const active=findActive(ms);
+    if(active!==lastActive&&active>=0){lastActive=active;}
+    // Target timing is tied to the word's start/end window. The slash crosses the target around 34% into that window.
+    const current=active>=0?flatWords[active]:null;const next=active>=0?flatWords[active+1]:null;
+    if(current){const duration=Math.max(100,current.endMs-current.startMs);const phase=Math.max(0,Math.min(1,(ms-current.startMs)/duration));
+      // Fast words compress the wind-up and sweep; long words get a more deliberate attack.
+      const wind=Math.min(130,duration*.22), strikeSpan=Math.max(90,Math.min(230,duration*.55));
+      // The word shatters at the midpoint of the visible sword sweep, not before the blade reaches it.
+      const impactMs=Math.min(current.endMs-20,current.startMs+wind+strikeSpan*.5);
+      const token=active;
+      if(ms>=impactMs&&lastImpactToken!==token){const target=wordMeshes[0];if(target)burstWord(target,token);lastImpactToken=token;}
+      const attackP=Math.max(0,Math.min(1,(ms-(current.startMs+wind))/strikeSpan));
+      const eased=attackP*attackP*(3-2*attackP);
+      swordPivot.rotation.z=-.85+Math.sin(eased*Math.PI)*1.45;
+      rightArm.rotation.z=-.08+Math.sin(eased*Math.PI)*.3;
+      if(ms<current.startMs+wind){swordPivot.rotation.z=-.85-Math.sin((ms-current.startMs)/Math.max(1,wind)*Math.PI)*.18;}
+      if(ms>current.endMs-40){swordPivot.rotation.z=-.85;}
+      impactLight.intensity=Math.max(0,impactLight.intensity-.65);
+    } else {swordPivot.rotation.z=-.85;}
+    // Five words in a perspective queue: target plus four upcoming words.
+    for(let i=0;i<5;i++){
+      const wi=active+i;let mesh=wordMeshes[i];const item=flatWords[wi];
+      if(!item){mesh.visible=false;continue;}
+      if(mesh.userData.lyricText!==item.text){mesh=replaceMesh(i,item.text);}
+      const age=ms-item.startMs;const duration=Math.max(100,item.endMs-item.startMs);
+      // Each word advances through the queue according to its own timing window.
+      const approach=Math.max(0,Math.min(1,(ms-(item.startMs-650))/Math.max(350, item.startMs-(flatWords[wi-1]?.startMs||item.startMs-500)+650)));
+      // Front-facing queue with a slight three-quarter angle: depth, not a long sideways row,
+      // creates the sense of words approaching the swordsman.
+      const depth=i*1.05;
+      const strikeX=-.62, strikeY=1.78;
+      mesh.position.set(strikeX+i*.16,strikeY-i*.045,-.35-depth);
+      mesh.rotation.y=-.12-i*.018;mesh.rotation.x=.012+i*.012;
+      const scale=1-i*.13;mesh.scale.setScalar(scale);
+      const hitOffset=Math.min(duration*.22,130)+Math.max(90,Math.min(230,duration*.55))*.5;
+      const hitMs=Math.min(item.endMs-20,item.startMs+hitOffset);
+      const alpha=i===0?Math.max(.12,1-Math.max(0,ms-hitMs)/260):Math.max(.12,1-i*.19);
+      if(mesh.material){mesh.material.transparent=true;mesh.material.opacity=alpha;}
+      mesh.visible=!(i===0&&lastImpactToken===active&&ms>hitMs);
+      // Upcoming words travel forward in depth and slightly toward the strike lane.
+      if(i>0){const lead=Math.max(0,Math.min(1,(ms-(item.startMs-850))/850));mesh.position.x=strikeX+i*.16-lead*(i*.12);mesh.position.z=-.35-i*1.05+lead*(i*.42);}
+    }
+    // Idle life and subtle cursor parallax; bounded so lyrics remain readable.
+    char.position.y=Math.sin(now*.0015)*.018;char.rotation.y=Math.sin(now*.00035)*.025;
+    mouseX+=(targetMouseX-mouseX)*.035;mouseY+=(targetMouseY-mouseY)*.035;
+    camera.position.x=.05+mouseX*.48;camera.position.y=2.2-mouseY*.28;camera.lookAt(.15+mouseX*.18,1.35-mouseY*.12,0);
+    fragments.forEach((m,i)=>{const age=(now-m.userData.born)/1000;if(age>1.1){scene.remove(m);m.geometry.dispose();m.material.dispose();fragments.splice(i,1);return;}m.position.addScaledVector(m.userData.vel,1/60);m.userData.vel.y-=3.4/60;m.rotation.x+=m.userData.spin.x/60;m.rotation.y+=m.userData.spin.y/60;m.material.opacity=Math.max(0,1-age/1.1);m.material.transparent=true;});
+    if(fragments.length>180){const extra=fragments.splice(0,fragments.length-180);extra.forEach(m=>{scene.remove(m);m.geometry.dispose();m.material.dispose();});}
+    renderer.render(scene,camera);
+  }
+  requestAnimationFrame(animate);
+  window.__lyricalSwordsmanReady=true;
+})();
+</script>
+
 </body>
 </html>
